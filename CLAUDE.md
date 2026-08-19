@@ -380,6 +380,113 @@ glyph table being load-bearing (expected), not surprising. `.9002`-`.9006`
 each fall entirely within the bulk glyph-data / tail region and don't touch
 the header or glyph table at all.
 
+## External research (2026-08-19, web search — no hardware, no code changes)
+
+Searched the web for anything on the MAXINE/iNFiNiT! font format. No binary
+format specification exists publicly anywhere — this really is undocumented,
+confirming the reverse-engineering approach is the only path. But found real,
+useful provenance/terminology context:
+
+- MAXINE! is part of Chyron's **iNFiNiT! family** of character generators
+  (first iNFiNiT! shipped late 1989; MAX!> and MAXINE! followed). Documented
+  at [cg-wiki.org/chyron/maxine](https://cg-wiki.org/chyron/maxine) (blocked
+  direct fetch, 403) and in the [CHYRON iNFiNiT! series Operation Manual,
+  Pub. No. 2A01976, March 1999](https://www.manualslib.com/manual/1215325/Chyron-Infinit-Series.html)
+  (978 pages, on ManualsLib — only the cover page and safety-warning pages
+  were actually readable through the fetch tool, not the technical body).
+- **Confirmed font provenance**: iNFiNiT! systems shipped with "the supplied
+  Bitstream Typeface Library catalog... 1,500+ available Master Fonts."
+  `Swiss 721 Bold` (`.0000`'s font name) is literally Bitstream's clone of
+  Helvetica Bold; `Dutch 766 Bold` (the `.3000`-`.3013` series) is
+  Bitstream's version of Imprint, a classic serif face, copyright 1990-93
+  Bitstream Inc. Both trace directly to the same Bitstream OEM library the
+  manual describes — strong independent confirmation that "Master Font"
+  really does mean an off-the-shelf Bitstream outline font, not something
+  Chyron-specific.
+- **Correct terminology, worth adopting going forward**: the manual's own
+  pipeline is Master Font (Bitstream/PostScript-like outline) → **Font
+  Create Utility** (Section 18 of the manual; Flash Font is Section 13) →
+  **Machine Font** (the device-native file — this is what our `.0000`
+  etc. files actually are). An "Advanced Font Create Utility" variant adds
+  more edge styles (bevels, neon, glow, chisel, etc.) beyond the 3 we've
+  seen so far (No edge / Border / Border & Shadow) — worth keeping in mind
+  if a font sample ever turns up with an edge style outside that set.
+- Bitstream's own outline format (Speedo, `.spd`, header literally starts
+  `D1.0\r\n`) is well documented
+  ([Wikipedia](https://en.wikipedia.org/wiki/Bitstream_Speedo_Fonts)) but
+  **`.0000` does not start with that header and its structure looks
+  nothing like a generic outline-font container** — Chyron's Font Create
+  Utility clearly converts/rasterizes the Master Font into their own
+  scanline-oriented Machine Font format (matching everything found by
+  static analysis above), it isn't just a renamed Speedo file. No direct
+  format inheritance to exploit here, just confirms the two-stage
+  pipeline's existence.
+- Chyron's *other*, older CG product line ("Scribe") has its own "Advanced
+  Font Create Utility" manual archived at [archive.org](https://archive.org/details/chyron-scribe-operator-manual/)
+  (24.7MB PDF, not fetched — Scribe predates the iNFiNiT!/MAXINE family and
+  is a different hardware generation, so its font format is likely
+  unrelated; flagged here only in case a future session wants to rule that
+  in/out directly rather than re-discover the link).
+
+Sources:
+- [Chyron MAXINE! – Character Generator Wiki](https://cg-wiki.org/chyron/maxine)
+- [CHYRON iNFiNiT! Series Operation Manual – ManualsLib](https://www.manualslib.com/manual/1215325/Chyron-Infinit-Series.html)
+- [Chyron Scribe Manual Set – Internet Archive](https://archive.org/details/chyron-scribe-operator-manual/)
+- [Dutch 766 Font family – Fonts In Use](https://fontsinuse.com/typefaces/254/dutch-766)
+- [Bitstream Speedo Fonts – Wikipedia](https://en.wikipedia.org/wiki/Bitstream_Speedo_Fonts)
+- [Chyron Corporation – Wikipedia](https://en.wikipedia.org/wiki/Chyron_Corporation)
+
+## Comparison against real Helvetica Bold (2026-08-19, still offline)
+
+Can't legally acquire the actual Bitstream Swiss 721 Bold font (commercial,
+copyrighted), but Bitstream explicitly designed it as Helvetica's
+metric/shape twin, and macOS ships a properly-licensed system Helvetica
+(`/System/Library/Fonts/Helvetica.ttc`, face index 1 = Bold) — a legitimate
+stand-in for structural comparison. Extracted real metrics/outlines via
+fontTools (numbers only, not redistributing the font):
+
+- **Vertical metrics — strong match.** Real Helvetica Bold: baseline sits
+  at 77.0% of the way from ascender-top to descender-bottom; x-height-top
+  at 23.8% (from `hhea`/`OS/2`: ascender=1577, descender=-471,
+  capHeight=1474, xHeight=1090, unitsPerEm=2048, and ascender-descender
+  spans exactly 1 em in this font). Our row model — derived purely from
+  internal byte structure (the ascender-adds-8/descender-adds-9 finding),
+  with zero reference to any real font — put baseline at 76.1% (row 35/46)
+  and x-height-top at 21.7% (row 10/46). Near-exact match on baseline
+  position specifically. Good independent confirmation the vertical
+  placement derivation is basically right.
+- **Raw crossing-count magnitude — real mismatch, now quantified.** True
+  geometric edge-crossings per scanline in real Helvetica Bold (computed
+  by scan-converting actual outlines at the same 46-row resolution):
+  straight letters (`I l 1 T E F L`) average 2.0 crossings/row; `M`/`W`
+  average 6.4-6.9; other diagonal/curved letters (`X A K Y V N O C S o c
+  e`) cluster 2.6-4.8. Our decoded per-row *value* counts were 4-7 for
+  straight and 10-20 for diagonal/curved — roughly 2-5x inflated versus
+  true geometry. So the straight-vs-diagonal categorical split found
+  earlier is real and directionally correct, but the raw numbers are NOT
+  literal edge-crossing counts — there must be multiple stored
+  samples/values per true edge (consistent with antialiasing/sub-sampling,
+  and with `byte2` mostly tagging "auxiliary" records rather than real
+  edges).
+- **`H`-specific confirmation.** Real Helvetica Bold's `H` averages 3.6
+  crossings/row specifically because most rows (away from the crossbar)
+  show 4 crossings (both stems' inner+outer edges) while the crossbar row
+  itself shows only 2 (one connected span). The fixed `H` decode (see
+  "mirrored-duplicate segments" above) produces exactly 2 nested slivers
+  per non-crossbar row = 4 edges, matching real geometry's non-crossbar
+  count exactly. Independent check on that specific fix, not just a visual
+  read.
+- **Advance-width magnitude — confirms the earlier retraction, now
+  quantified.** Real Helvetica Bold: `M` is 3.0x wider than `I` (1706 vs
+  569 units), `W` is 3.4x wider (1933 vs 569). Our shared-scale byte1
+  span estimate from earlier in this session only showed `M` ~1.4x wider
+  than `I` (223.0 vs 156.6). So the *ranking* (I/l narrower than M/W),
+  independently checked against the CRT photo earlier, was correct — but
+  the *magnitude* is significantly compressed relative to reality. Fits
+  with `width_field` already being ruled out as a usable width metric and
+  the coordinate scale/mapping not being uniform the way `--scale 128`
+  assumes.
+
 ## Methodology notes / how to keep working on this
 
 1. This is a **black-box reverse engineering project with real hardware

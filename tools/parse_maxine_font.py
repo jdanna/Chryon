@@ -58,14 +58,20 @@ class MaxineFont:
         self.unk_0xf8 = be16(d, 0xf8)     # 9 in .0000
         self.unk_0xfa = be16(d, 0xfa)     # 9 in .0000
         self.unk_0xfe = be16(d, 0xfe)     # 11 in .0000
-        # 4-entry / 10-byte-each global metrics table at 0x100-0x12f.
+        # 0x100-0x103: zero/reserved. 0x104-0x105: standalone BE16 (1314 in
+        # .0000), NOT part of the entries below -- meaning unknown.
+        # 0x106-0x107: zero.
+        self.unk_0x104 = be16(d, 0x104)   # 1314 in .0000
+        # 4-entry / 10-byte-each global metrics table, starting at 0x108
+        # (audited 2026-08-19 -- an earlier pass had this at 0x104, which is
+        # wrong; verify against hex before trusting either offset again).
         # Constant part (0x4200, 0x0000, 0xa411, 0x0000) + one increasing
         # BE16 per entry (0, 128, 224, 320 in .0000). Candidate: vertical
         # metric positions (ascender/cap-height/x-height/baseline?) in an
         # unknown fixed-point unit. UNCONFIRMED.
         self.global_metrics_table = []
         for i in range(4):
-            o = 0x104 + i * 10
+            o = 0x108 + i * 10
             vals = struct.unpack_from('>5H', d, o)
             self.global_metrics_table.append(vals)
 
@@ -107,17 +113,35 @@ class MaxineFont:
         # compute per-glyph byte size = delta to next defined glyph's offset
         defined_chars = [c for c, g in self.glyphs.items() if g['defined']]
         defined_chars.sort(key=lambda c: self.glyphs[c]['offset'])
+        tail_boundary = self._estimate_tail_boundary()
         for idx, ch in enumerate(defined_chars):
             g = self.glyphs[ch]
+            g['file_offset'] = self.bulk_base + g['offset']
             if idx + 1 < len(defined_chars):
                 nxt = self.glyphs[defined_chars[idx + 1]]['offset']
                 g['size'] = nxt - g['offset']
             else:
-                g['size'] = None  # last glyph -- true end unknown, see
-                                   # CLAUDE.md note on the ~7KB antialiased
-                                   # tail region boundary (~0x1d000-0x1d400
-                                   # in .0000, NOT a fixed formula yet)
-            g['file_offset'] = self.bulk_base + g['offset']
+                # last glyph -- no next offset to subtract against. Estimate
+                # its end as wherever the low-entropy antialiased tail block
+                # (see CLAUDE.md) begins. HEURISTIC, not derived from any
+                # header field -- verify against hex if it matters.
+                g['size'] = max(0, tail_boundary - g['file_offset'])
+
+    def _estimate_tail_boundary(self):
+        """Scan backward from EOF in 1KB windows for the point where byte
+        diversity collapses to the small multiples-of-0x22 palette seen in
+        the antialiased tail region (see CLAUDE.md). Returns a file offset;
+        falls back to len(data) if no such collapse is found."""
+        d = self.data
+        window = 0x400
+        boundary = len(d)
+        for start in range(len(d) - window, self.bulk_base, -window):
+            distinct = len(set(d[start:start + window]))
+            if distinct <= 16:
+                boundary = start
+            else:
+                break
+        return boundary
 
     def glyph_bytes(self, ch):
         g = self.glyphs.get(ch)

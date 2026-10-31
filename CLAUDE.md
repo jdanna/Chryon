@@ -27,6 +27,10 @@ hardware yet — that is the next step (see `experiments/MANIFEST.md`).
   `roundtrip` (re-encode every glyph and compare with the file).
 - `tools/ttf2maxine.py` — the converter. Needs Pillow, numpy, fontTools.
   `python3 tools/ttf2maxine.py font.ttf --scanlines 46 --code 9100 --out experiments --preview`
+  Also importable: `ttf2maxine.convert(...)` is what the GUI calls.
+- `tools/maxine_studio.py` — local web GUI (stdlib `http.server` + one HTML
+  page) wrapping the converter with a preview and FTP upload. Verified
+  against a local pyftpdlib server; never yet pointed at the real unit.
 - `tools/footer_template.bin` — the fixed 6036-byte footer copied from `.3000`
   (only the 66×79 preview thumbnail inside it is regenerated per font).
 

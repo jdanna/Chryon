@@ -275,6 +275,86 @@ def make_thumbnail(path, index, edge):
     return q.tolist()
 
 
+def convert(ttf, scanlines=46, code="9100", master_id="9000", name=None, edge="none", lines=3,
+            aspect=1.17, spacing=0.95, baseline_off=None, chars=None, kern=True, out="experiments",
+            preview=False, index=0, log=print):
+    """Convert one TTF/OTF face to a MAXINE font file. Returns (font_path, preview_png_or_None)."""
+    if not (len(code) == 4 and code.isdigit()):
+        raise ValueError("code must be 4 digits")
+    if chars is None:
+        chars = "".join(chr(c) for c in range(33, 127))
+    chars = [c for c in chars if 33 <= ord(c) < mx.NSLOTS]
+    rz = Rasterizer(ttf, scanlines, aspect, edge, lines if edge != "none" else 0, spacing, index)
+    S = scanlines
+    # vertical metrics: ascent = height of h/H/l, descent = depth of p/g
+    def h_of(ch, which):
+        b = rz.bounds(ch)
+        return b[which] if b else None
+    letter_tops = [v for v in (h_of("h", 3), h_of("H", 3), h_of("l", 3)) if v is not None]
+    asc_units = max(letter_tops) if letter_tops else rz.tt["hhea"].ascent
+    desc_units = -min(v for v in (h_of("p", 1), h_of("g", 1), -abs(rz.tt["hhea"].descent)) if v is not None)
+    ascent = int(round(asc_units * rz.sy)); descent = int(round(abs(desc_units) * rz.sy))
+    lines = lines if edge != "none" else 0
+    baseline_off = baseline_off if baseline_off is not None else (11 if edge == "none" else 5)
+    baseline_off = max(baseline_off, lines + 2)
+    # make sure the tallest glyph (plus edge and the leading empty row) fits above row 0
+    lead_rows = 1 if edge != "none" else 0
+    tallest = max((rz.bounds(c)[3] for c in chars if rz.bounds(c)), default=asc_units)
+    need = int(math.ceil(tallest * rz.sy)) + lines + lead_rows + 1
+    if ascent + baseline_off < need:
+        log(f"raising baseline offset {baseline_off} -> {need - ascent} so tall glyphs fit")
+        baseline_off = need - ascent
+    baseline_row = ascent + baseline_off
+
+    font = mx.MaxineFont()
+    name = name or rz.tt["name"].getDebugName(4) or os.path.basename(ttf)
+    font.name = name[:59]
+    if edge == "none":
+        font.desc1 = f"  {S} scanlines No edge "; font.desc2 = " 4 lines "
+    elif edge == "border":
+        font.desc1 = f"  {S} scanlines Border    {lines} lines            "; font.desc2 = ""
+    else:
+        font.desc1 = f"  {S} scanlines Border & Shdw    {lines} lines lower left"; font.desc2 = ""
+    font.digits = master_id[:4].ljust(4, "0")
+    font.cell_rows = S + 2 * lines
+    font.ascent = ascent; font.descent = descent; font.baseline_off = baseline_off
+    font.version = 1317
+
+    blobs = {}
+    has_edge = edge != "none"
+    lead = 1 if has_edge else 0
+    max_adv = 0
+    for ch in chars:
+        face, ed, top, adv = rz.render(ch, baseline_row)
+        max_adv = max(max_adv, adv)
+        if face is None:
+            continue
+        if top - lead < 0:
+            raise ValueError(f"glyph {ch!r} would start above row 0 (top={top}); raise baseline_off")
+        g = mx.Glyph(ord(ch), top - lead, adv, [])
+        blobs[ord(ch)] = (g, mx.encode_glyph(face.tolist(), ed.tolist(), has_edge, lead))
+    for c, (face, ed, top, adv) in underline_tiles(S, baseline_row, edge, lines, aspect).items():
+        g = mx.Glyph(c, max(0, top - lead), adv, [])
+        blobs[c] = (g, mx.encode_glyph(face.tolist(), ed.tolist(), has_edge, lead))
+    font.max_advance = max_adv
+    if kern:
+        font.kerning = ttf_kerning(rz.tt, chars, rz.sx * spacing)
+    font.footer = mx.set_thumbnail(mx.default_footer(), make_thumbnail(ttf, index, edge))
+
+    data = mx.build(font, blobs, code, has_edge, edge == "shadow")
+    os.makedirs(out, exist_ok=True)
+    out_path = os.path.join(out, "." + code)
+    open(out_path, "wb").write(data)
+    log(f"wrote {out_path}: {len(data)} bytes, {len(blobs)} glyphs, {len(font.kerning)} kern pairs, "
+        f"cell_rows={font.cell_rows} ascent={ascent} descent={descent} baseline_row={baseline_row}")
+    png = None
+    if preview:
+        png = out_path + ".png"
+        mx.render_sheet(mx.load(out_path), png)
+        log("preview: " + png)
+    return out_path, png
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("ttf")
@@ -288,75 +368,16 @@ def main(argv=None):
     ap.add_argument("--aspect", type=float, default=1.17)
     ap.add_argument("--spacing", type=float, default=0.95)
     ap.add_argument("--baseline-off", type=int, default=None, help="rows between ascent and baseline (0xfe); default 11 no-edge / 5 edge")
-    ap.add_argument("--chars", default="".join(chr(c) for c in range(33, 127)))
+    ap.add_argument("--chars", default=None)
     ap.add_argument("--no-kern", action="store_true")
     ap.add_argument("--out", default="experiments")
     ap.add_argument("--preview", action="store_true")
     a = ap.parse_args(argv)
-
-    if not (len(a.code) == 4 and a.code.isdigit()):
-        ap.error("--code must be 4 digits")
-    chars = [c for c in a.chars if 33 <= ord(c) < mx.NSLOTS]
-    rz = Rasterizer(a.ttf, a.scanlines, a.aspect, a.edge, a.lines if a.edge != "none" else 0, a.spacing, a.index)
-    S = a.scanlines
-    # vertical metrics: ascent = height of 'h' (or cap height), descent = depth of 'p'
-    def h_of(ch, which):
-        b = rz.bounds(ch)
-        return b[which] if b else None
-    letter_tops = [v for v in (h_of("h", 3), h_of("H", 3), h_of("l", 3)) if v is not None]
-    asc_units = max(letter_tops) if letter_tops else rz.tt["hhea"].ascent
-    desc_units = -min(v for v in (h_of("p", 1), h_of("g", 1), -abs(rz.tt["hhea"].descent)) if v is not None)
-    ascent = int(round(asc_units * rz.sy)); descent = int(round(abs(desc_units) * rz.sy))
-    lines = a.lines if a.edge != "none" else 0
-    baseline_off = a.baseline_off if a.baseline_off is not None else (11 if a.edge == "none" else 5)
-    baseline_off = max(baseline_off, lines + 2)
-    baseline_row = ascent + baseline_off
-
-    font = mx.MaxineFont()
-    name = a.name or rz.tt["name"].getDebugName(4) or os.path.basename(a.ttf)
-    font.name = name[:59]
-    if a.edge == "none":
-        font.desc1 = f"  {S} scanlines No edge "; font.desc2 = " 4 lines "
-    elif a.edge == "border":
-        font.desc1 = f"  {S} scanlines Border    {lines} lines            "; font.desc2 = ""
-    else:
-        font.desc1 = f"  {S} scanlines Border & Shdw    {lines} lines lower left"; font.desc2 = ""
-    font.digits = a.master_id[:4].ljust(4, "0")
-    font.cell_rows = S + 2 * lines
-    font.ascent = ascent; font.descent = descent; font.baseline_off = baseline_off
-    font.version = 1317
-
-    blobs = {}
-    has_edge = a.edge != "none"
-    lead = 1 if has_edge else 0
-    max_adv = 0
-    for ch in chars:
-        face, edge, top, adv = rz.render(ch, baseline_row)
-        max_adv = max(max_adv, adv)
-        if face is None:
-            continue
-        if top - lead < 0:
-            raise SystemExit(f"glyph {ch!r} would start above row 0 (top={top}); raise --baseline-off")
-        g = mx.Glyph(ord(ch), top - lead, adv, [])
-        blobs[ord(ch)] = (g, mx.encode_glyph(face.tolist(), edge.tolist(), has_edge, lead))
-    for code, (face, edge, top, adv) in underline_tiles(S, baseline_row, a.edge, lines, a.aspect).items():
-        g = mx.Glyph(code, max(0, top - lead), adv, [])
-        blobs[code] = (g, mx.encode_glyph(face.tolist(), edge.tolist(), has_edge, lead))
-    font.max_advance = max_adv
-    if not a.no_kern:
-        font.kerning = ttf_kerning(rz.tt, chars, rz.sx * a.spacing)
-    font.footer = mx.set_thumbnail(mx.default_footer(), make_thumbnail(a.ttf, a.index, a.edge))
-
-    data = mx.build(font, blobs, a.code, has_edge, a.edge == "shadow")
-    os.makedirs(a.out, exist_ok=True)
-    out_path = os.path.join(a.out, "." + a.code)
-    open(out_path, "wb").write(data)
-    print(f"wrote {out_path}: {len(data)} bytes, {len(blobs)} glyphs, {len(font.kerning)} kern pairs, "
-          f"cell_rows={font.cell_rows} ascent={ascent} descent={descent} baseline_row={baseline_row}")
-    if a.preview:
-        png = out_path + ".png"
-        mx.render_sheet(mx.load(out_path), png)
-        print("preview:", png)
+    try:
+        convert(a.ttf, a.scanlines, a.code, a.master_id, a.name, a.edge, a.lines, a.aspect, a.spacing,
+                a.baseline_off, a.chars, not a.no_kern, a.out, a.preview, a.index)
+    except ValueError as e:
+        ap.error(str(e))
 
 
 if __name__ == "__main__":

@@ -32,6 +32,17 @@ The full byte-level spec is in [CLAUDE.md](CLAUDE.md).
 
 Requires Python 3 with Pillow, numpy and fontTools.
 
+### GUI: MAXINE Font Studio
+
+```sh
+python3 tools/maxine_studio.py
+```
+
+Opens a local web app (http://127.0.0.1:8765, localhost only) where you can
+pick an installed font or drop a TTF/OTF/TTC, set size and edge style,
+convert, see a preview rendered from the finished file, and upload it to the
+MAXINE over FTP (passive or active mode). Settings are kept in the browser.
+
 ```sh
 # inspect an original font
 python3 tools/maxine_font.py info fonts/.0000
@@ -40,7 +51,7 @@ python3 tools/maxine_font.py render fonts/.3000 out.png   # specimen sheet (edge
 python3 tools/maxine_font.py kern fonts/.0000
 python3 tools/maxine_font.py roundtrip fonts/.5000        # re-encode and compare
 
-# convert a TTF
+# convert a TTF from the command line
 python3 tools/ttf2maxine.py "/path/to/Font.ttf" --scanlines 46 --code 9100 --out experiments --preview
 python3 tools/ttf2maxine.py Font.ttf --scanlines 40 --code 9101 --edge border --lines 3 --out experiments
 python3 tools/ttf2maxine.py Font.ttf --scanlines 30 --code 9102 --edge shadow --lines 4 --out experiments

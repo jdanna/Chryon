@@ -1,0 +1,5 @@
+# Exact-pinned converter dependencies, vendored into the packaged app's bundled
+# Python by scripts/vendor-python-packages.mjs for each target platform.
+numpy==2.5.4
+Pillow==13.0.0
+fonttools==4.68.0

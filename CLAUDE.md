@@ -28,9 +28,8 @@ hardware yet — that is the next step (see `experiments/MANIFEST.md`).
 - `tools/ttf2maxine.py` — the converter. Needs Pillow, numpy, fontTools.
   `python3 tools/ttf2maxine.py font.ttf --scanlines 46 --code 9100 --out experiments --preview`
   Also importable: `ttf2maxine.convert(...)` is what the GUI calls.
-- `tools/maxine_studio.py` — local web GUI (stdlib `http.server` + one HTML
-  page) wrapping the converter with a preview and FTP upload. Verified
-  against a local pyftpdlib server; never yet pointed at the real unit.
+- `tools/studio_bridge.py` — JSON-lines backend for the Electron app (see
+  below). Wraps the converter and all FTP commands.
 - `tools/footer_template.bin` — the fixed 6036-byte footer copied from `.3000`
   (only the 66×79 preview thumbnail inside it is regenerated per font).
 
@@ -186,6 +185,50 @@ Defaults chosen to mimic the originals: baseline offset 11 (no edge) / 5
 version 1317, master id 9000, chars 33–126 (the originals stop at 122; codes
 123–191 are untested on hardware).
 
+## Electron app (MAXINE Font Studio)
+
+```bash
+npm run dev            # needs python3 with Pillow, numpy, fontTools
+npm run typecheck
+npm run test:headless  # build, then run scripts/headless/smoke.json with no window
+npm run dist:mac | dist:win | dist:linux | release     # unsigned installers
+npm run dist:mac-signed | dist:win-signed | release-signed
+```
+
+- `src/main/` — `index.ts` (window), `ipc.ts` (all handlers; the temp folder and
+  native dialogs live here), `bridge.ts` (spawns `tools/studio_bridge.py`, a
+  JSON-lines subprocess that exits when stdin closes), `settings.ts`.
+- `src/preload/index.ts` — `window.maxine`, typed by `MaxineApi` in `src/shared/types.ts`.
+- `src/renderer/src/` — React + CSS Modules. `App.tsx` owns settings, the log and
+  the converted-font list; `components/ConvertTab` and `components/UploadTab`
+  stay mounted, so switching tabs keeps their state. Tokens mirror Luminary's.
+- Converted fonts go to `<system temp>/MAXINE Font Studio/`. The renderer passes
+  bare `.NNNN` names, never paths, and `tempFile()` in `ipc.ts` validates them.
+  Dotfiles are hidden in Finder, so Export uses a folder picker (NSSavePanel
+  refuses dot names).
+- Packaged builds run a python-build-standalone interpreter from
+  `resources/python/<platform>-<arch>/` (gitignored), with the pins in
+  `resources/requirements-prod.txt` vendored in by
+  `scripts/vendor-python-packages.mjs`. One Mac can build all three platforms.
+  The interpreter runs with `-I` and `pycache_prefix` under userData, so no
+  `.pyc` lands inside a signed bundle.
+- Fonts are dotfiles, so `ftp_list_entries` tries `LIST -a`, then `LIST`, then
+  `NLST`. `ftp_delete` refuses anything but `.9xxx`, so the originals on the unit
+  can't be removed from the app. Nothing here has been tried on the real unit.
+
+**This repo is public.** Signing identity (`CSC_NAME`), notarization credentials
+and `MINIO_ENDPOINT` come from `.env` (gitignored) or repo secrets, never from a
+committed file. `electron-builder.yml` is an allowlist, so `.env` can't be packaged.
+`dist:win-signed` needs a self-hosted runner labeled `chryon` and these repo
+secrets: the `AZURE_*` set in `electron-builder.win-signed.js` and `MINIO_*`.
+
+Verify in the running app with the headless driver, not `npm run dev`: it uses a
+throwaway profile and temp folder and answers message boxes with button 0, which
+is the confirming action everywhere in this app. Steps are JSON, see
+`scripts/headless/driver.mjs`; within one step, actions run in the order `drop`,
+`fill`, `click`, `select`, `wait`, `eval`/`expect`, `shot`. `launch({ binary })`
+drives a packaged app, with a visible window.
+
 ## Open questions (need hardware)
 
 1. Do converter outputs load at all? (`experiments/.9100` is the closest A/B
@@ -199,8 +242,9 @@ version 1317, master id 9000, chars 33–126 (the originals stop at 122; codes
    one color or distinguishes border from shadow some other way.
 4. Whether `0xd8`/`0xf8`/`0xfe` affect on-screen line layout or are only
    informational.
-5. Network protocol/host for the MAXINE's share, if transfer should be
-   automated; any cleaner capture than a phone photo.
+5. Whether the MAXINE's FTP server accepts the app's commands (`LIST -a`, `SIZE`,
+   passive mode) and which folder holds the fonts; any cleaner capture than a
+   phone photo.
 
 ## History
 
@@ -215,3 +259,6 @@ version 1317, master id 9000, chars 33–126 (the originals stop at 122; codes
   thumbnail, header metrics; wrote `tools/maxine_font.py` and
   `tools/ttf2maxine.py`; generated `experiments/.9100`–`.9103` for hardware
   testing.
+- 2026-10-31 (Opus): replaced the local web GUI with an Electron app (two tabs,
+  fonts saved to a temp folder, signed builds for mac/win/linux) on the same
+  stack as Luminary/SuperGroup.

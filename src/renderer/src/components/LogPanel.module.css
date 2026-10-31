@@ -1,0 +1,37 @@
+.panel {
+  flex-shrink: 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.toggle {
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+}
+
+.body {
+  height: 112px;
+  overflow: auto;
+  padding: 6px var(--space-3);
+  background: var(--color-well);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+.info {
+  color: var(--color-text-secondary);
+}
+
+.ok {
+  color: var(--color-success);
+}
+
+.error {
+  color: var(--color-error);
+}

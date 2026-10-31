@@ -1,0 +1,116 @@
+.layout {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr) 288px;
+}
+
+.sources,
+.preview,
+.inspector {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.sources {
+  border-right: 1px solid var(--color-border);
+}
+
+.inspector {
+  border-left: 1px solid var(--color-border);
+  overflow-y: auto;
+}
+
+.search {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.fontList {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-1) 0;
+}
+
+.fontRow {
+  display: block;
+  width: 100%;
+  padding: 3px var(--space-3);
+  text-align: left;
+  font-size: var(--font-size-md);
+  color: var(--color-text-label);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fontRow:hover {
+  background: var(--color-surface-1);
+  color: var(--color-text-primary);
+}
+
+.fontRowActive {
+  composes: fontRow;
+  background: var(--color-accent-dim);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+  color: var(--color-text-primary);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  flex-shrink: 0;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border-right: 1px solid var(--color-border-subtle);
+  min-width: 0;
+}
+
+.stat:last-child {
+  border-right: none;
+}
+
+.statLabel {
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.statValue {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.edgeFields {
+  grid-template-columns: 1fr 68px;
+}
+
+.convertBar {
+  margin-top: auto;
+  position: sticky;
+  bottom: 0;
+  background: var(--color-bg);
+  border-top: 1px solid var(--color-border-subtle);
+  padding-bottom: var(--space-3);
+}
+
+.convertButton {
+  display: block;
+  width: calc(100% - 2 * var(--space-3));
+  margin: var(--space-3) var(--space-3) 0;
+  padding: 7px 12px;
+  font-size: var(--font-size-md);
+}

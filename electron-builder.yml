@@ -1,0 +1,58 @@
+afterPack: build/afterPackHook.js
+appId: com.retrograde.maxinefontstudio
+productName: MAXINE Font Studio
+directories:
+  buildResources: resources
+files:
+  - out/**
+  - package.json
+extraResources:
+  - from: tools
+    to: tools
+    filter:
+      - "*.py"
+      - footer_template.bin
+win:
+  executableName: MaxineFontStudio
+  extraResources:
+    - from: resources/python/win32-x64/python
+      to: python
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  artifactName: ${name}-${version}-setup.${ext}
+  shortcutName: ${productName}
+  uninstallDisplayName: ${productName}
+  createDesktopShortcut: always
+mac:
+  category: public.app-category.utilities
+  identity: null
+  entitlementsInherit: build/entitlements.mac.plist
+  extraResources:
+    - from: resources/python/darwin-${arch}/python
+      to: python
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+dmg:
+  artifactName: ${name}-${version}-${arch}.${ext}
+linux:
+  executableName: maxine-font-studio
+  category: Utility
+  icon: resources/icon.png
+  artifactName: ${name}-${version}-${arch}.${ext}
+  extraResources:
+    - from: resources/python/linux-x64/python
+      to: python
+    - from: resources/icon.png
+      to: icon.png
+  target:
+    - target: AppImage
+      arch:
+        - x64
+npmRebuild: false
+publish: null

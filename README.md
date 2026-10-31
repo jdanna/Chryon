@@ -30,20 +30,38 @@ The full byte-level spec is in [CLAUDE.md](CLAUDE.md).
 
 ## Tools
 
-Requires Python 3 with Pillow, numpy and fontTools.
+### App: MAXINE Font Studio
 
-### GUI: MAXINE Font Studio
+A desktop app for macOS, Windows and Linux. It bundles its own Python, so
+nothing else needs installing.
+
+- **Convert** tab: pick an installed font or drop a TTF/OTF/TTC, set size and
+  edge style, and see a preview rendered from the finished file. Fonts are
+  written to a temp folder; **Export** copies one somewhere permanent.
+- **Upload** tab: connect to the MAXINE over FTP (passive or active), see what
+  is on the unit, upload one font or a batch, and delete `.9xxx` test fonts.
+  Originals can't be deleted from the app, and an upload that would replace a
+  font asks first. A remembered password is kept in the system keychain.
+
+![Convert tab](docs/studio.png)
+
+![Upload tab](docs/studio-upload.png)
 
 ```sh
-python3 tools/maxine_studio.py
+npm install
+npm run dev               # needs python3 with Pillow, numpy and fontTools
+npm run dist:mac          # dist/*.dmg (arm64 + x64)
+npm run dist:win          # dist/*-setup.exe (x64)
+npm run dist:linux        # dist/*.AppImage (x64)
+npm run release           # all three, into dist/releases/<version>/
 ```
 
-Opens a local web app (http://127.0.0.1:8765, localhost only) where you can
-pick an installed font or drop a TTF/OTF/TTC, set size and edge style,
-convert, see a preview rendered from the finished file, and upload it to the
-MAXINE over FTP (passive or active mode). Settings are kept in the browser.
+`npm run dist:mac-signed` and `npm run release-signed` also sign and notarize.
+They read credentials from a local `.env`, which is never committed.
 
-![MAXINE Font Studio](docs/studio.png)
+### Command line
+
+Requires Python 3 with Pillow, numpy and fontTools.
 
 ```sh
 # inspect an original font
@@ -66,7 +84,8 @@ you can see what the unit should display.
 ## Layout
 
 - `fonts/` — the 36 original Machine Font files from the unit.
-- `tools/` — reader/writer library and converter.
+- `tools/` — reader/writer library, converter and the app's Python backend.
+- `src/` — the Electron app (main, preload, React renderer).
 - `experiments/` — generated test fonts and the hardware test plan.
 - `CLAUDE.md` — format specification, findings, open questions, history.
 

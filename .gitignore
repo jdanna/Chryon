@@ -1,16 +1,45 @@
+# Dependencies / build output
+node_modules/
+dist/
+out/
+resources/python/
+.vendor-tmp-*/
+*.tsbuildinfo
+
+# Env / secrets
+.env
+.env.*
+.env~
+*.p12
+*.pem
+*.key
+
+# Claude Code local settings
+.claude/
+
 # macOS
 .DS_Store
 .AppleDouble
 .LSOverride
+._*
+
+# Windows
+Thumbs.db
+Desktop.ini
 
 # Editor/IDE
 .vscode/
 .idea/
 *.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
 
 # Python
 __pycache__/
 *.pyc
 
-# fonts uploaded through the GUI
+# fonts uploaded through the old web GUI
 experiments/uploaded-fonts/

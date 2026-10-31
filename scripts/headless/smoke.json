@@ -1,0 +1,46 @@
+[
+  {
+    "eval": "new Promise((r) => setTimeout(() => r(document.querySelector('[class*=\"fontRow\"]') !== null), 8000))",
+    "expect": true,
+    "shot": "convert-empty"
+  },
+  {
+    "drop": "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+    "eval": "[...document.querySelectorAll('label')].find((l) => l.textContent.includes('Display name')).querySelector('input').value",
+    "expect": "Arial Bold"
+  },
+  {
+    "fill": [
+      "Font code",
+      "9200"
+    ],
+    "click": "Convert to .9200",
+    "wait": 4000,
+    "eval": "document.querySelector('[class*=\"statValue\"]').textContent",
+    "expect": "98",
+    "shot": "convert-done"
+  },
+  {
+    "select": [
+      "Style",
+      "shadow"
+    ],
+    "fill": [
+      "Font code",
+      "9201"
+    ]
+  },
+  {
+    "click": "Convert to .9201",
+    "wait": 6000,
+    "eval": "document.querySelector('[class*=\"sectionMeta\"]').textContent.includes('Border & Shdw')",
+    "expect": true,
+    "shot": "convert-shadow"
+  },
+  {
+    "click": "Upload",
+    "eval": "document.querySelectorAll('[class*=\"local\"] [class*=\"row\"]').length",
+    "expect": 2,
+    "shot": "upload-disconnected"
+  }
+]

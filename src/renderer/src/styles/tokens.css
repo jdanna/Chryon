@@ -1,0 +1,48 @@
+/* Mirrored from Luminary (src/renderer/src/styles/tokens.css) so this reads as
+   part of the same tool family. */
+:root {
+  --color-bg: #1a1a1a;
+  --color-surface-1: #222222;
+  --color-surface-2: #2a2a2a;
+  --color-surface-3: #333333;
+  --color-border: #3a3a3a;
+  --color-border-subtle: #2d2d2d;
+
+  --color-text-primary: #e8e8e8;
+  --color-text-secondary: #999999;
+  --color-text-muted: #666666;
+  --color-text-label: #bbbbbb;
+
+  --color-accent: #4a9eff;
+  --color-accent-hover: #6ab2ff;
+  --color-accent-dim: rgba(74, 158, 255, 0.15);
+
+  --color-success: #4caf82;
+  --color-warning: #e6a020;
+  --color-error: #e05050;
+
+  --color-field-bg: #252525;
+  --color-field-border: #3a3a3a;
+  --color-field-focus: #4a9eff;
+  --color-well: #141414;
+
+  --topbar-height: 44px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+
+  --font-mono: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+  --font-size-xs: 10px;
+  --font-size-sm: 11px;
+  --font-size-md: 13px;
+  --font-size-lg: 15px;
+  --font-size-xl: 18px;
+
+  --radius-sm: 3px;
+  --radius-md: 5px;
+
+  --transition-fast: 80ms ease;
+}

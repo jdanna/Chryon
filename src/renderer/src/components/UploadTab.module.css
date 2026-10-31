@@ -1,0 +1,176 @@
+.layout {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr) 340px;
+}
+
+.connection,
+.local,
+.remote {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.connection {
+  border-right: 1px solid var(--color-border);
+  overflow-y: auto;
+}
+
+.remote {
+  border-left: 1px solid var(--color-border);
+}
+
+.connectBar {
+  padding: 0 var(--space-3);
+}
+
+.connectButton {
+  width: 100%;
+  padding: 7px 12px;
+  font-size: var(--font-size-md);
+}
+
+.table {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: 40px;
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--color-border-subtle);
+  cursor: default;
+}
+
+.row:hover {
+  background: var(--color-surface-1);
+}
+
+.rowActive {
+  composes: row;
+  background: var(--color-accent-dim);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+.rowActive:hover {
+  background: var(--color-accent-dim);
+}
+
+.code {
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.names {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.name,
+.desc {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.desc {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.size {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.onUnit,
+.onUnitDiffers {
+  flex-shrink: 0;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--color-success);
+}
+
+.onUnitDiffers {
+  color: var(--color-warning);
+}
+
+.previewPane {
+  flex-shrink: 0;
+  height: 210px;
+  display: flex;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.actionBar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+  height: 44px;
+  padding: 0 var(--space-3);
+  background: var(--color-surface-1);
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.actionHint {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.progressName {
+  font-size: var(--font-size-sm);
+}
+
+.progressTrack {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-surface-3);
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--color-accent);
+}
+
+.remoteRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: 30px;
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.remoteRowDim {
+  composes: remoteRow;
+  color: var(--color-text-muted);
+}
+
+.remoteName {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.date {
+  flex-shrink: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}

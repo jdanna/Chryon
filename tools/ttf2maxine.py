@@ -21,7 +21,7 @@ Options of note:
 Nothing here is hardware-validated yet: load the result on the MAXINE and
 photograph it (see CLAUDE.md).  Stop and report if the unit fails to load it.
 """
-import argparse, math, os, sys
+import argparse, math, os, string, sys, unicodedata
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from fontTools.ttLib import TTFont
@@ -30,6 +30,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import maxine_font as mx
 
 SS = 4  # supersampling factor for rasterization / edge generation
+# The hardware test string (see CLAUDE.md), so a specimen can be held up against a CRT
+# photo, plus a last line for the remaining punctuation.
+SPECIMEN = ["ABCDEFGHIJKLM", "NOPQRSTUVWXYZ", "abcdefghijklm", "nopqrstuv", "wxyz", "1234567890",
+            "!$%'&*(),-/", ".:;<>?@#+=[]{}|~\"\\^_`"]
 
 
 def dilate_ellipse(mask: np.ndarray, rx: int, ry: int) -> np.ndarray:
@@ -62,15 +66,37 @@ def quant8(a: np.ndarray) -> np.ndarray:
     return np.clip(np.rint(a * 255), 0, 255).astype(np.uint8)
 
 
+def font_cmap(tt):
+    """(code -> glyph name, PIL encoding, code offset for drawing).  Symbol fonts like Wingdings keep
+    their glyphs on the ASCII keys in a Mac Roman or Microsoft Symbol (0xF0xx) table, not in Unicode."""
+    best = tt.getBestCmap() or {}
+    if any(33 <= c < 127 for c in best):
+        return best, "", 0
+    mac = tt["cmap"].getcmap(1, 0)
+    if mac and any(33 <= c < 127 for c in mac.cmap):
+        return dict(mac.cmap), "armn", 0
+    sym = tt["cmap"].getcmap(3, 0)
+    keyed = {c & 0xFF: g for c, g in sym.cmap.items() if c & 0xFF00 == 0xF000} if sym else {}
+    if keyed:
+        return keyed, "symb", 0xF000
+    return best, "", 0
+
+
 class Rasterizer:
     def __init__(self, path, scanlines, aspect, edge, lines, spacing, index=0):
         self.tt = TTFont(path, fontNumber=index)
+        if "head" not in self.tt or not ("glyf" in self.tt or "CFF " in self.tt):
+            raise ValueError("This font has no scalable outlines, it may be bitmap-only.")
         self.upm = self.tt["head"].unitsPerEm
-        self.cmap = self.tt.getBestCmap()
+        self.cmap, self.encoding, self.code_offset = font_cmap(self.tt)
         self.hmtx = self.tt["hmtx"]
         self.S = scanlines; self.aspect = aspect; self.edge = edge; self.lines = lines
         self.spacing = spacing
-        self.px = ImageFont.truetype(path, scanlines * SS, index=index)
+        try:
+            self.px = ImageFont.truetype(path, scanlines * SS, index=index, encoding=self.encoding)
+            self.px.getbbox("A")         # loads a glyph, which is what fails on broken hinting
+        except OSError as e:
+            raise ValueError(f"FreeType can't render this font ({e}).")
         self.sx = scanlines * aspect / self.upm      # output px per font unit (x)
         self.sy = scanlines / self.upm               # output rows per font unit (y)
         self.rx_ss = int(round(lines * aspect * SS)) if edge != "none" else 0
@@ -81,6 +107,16 @@ class Rasterizer:
 
     def glyph_name(self, ch):
         return self.cmap.get(ord(ch))
+
+    def draw_char(self, ch):
+        """The character to hand PIL for `ch`, under this font's encoding."""
+        return chr(ord(ch) + self.code_offset)
+
+    def ascii_count(self):
+        return sum(1 for c in range(33, 127) if c in self.cmap)
+
+    def letter_count(self):
+        return sum(1 for c in map(ord, string.ascii_letters) if c in self.cmap)
 
     def bounds(self, ch):
         """(xMin, yMin, xMax, yMax) in font units, or None."""
@@ -124,7 +160,7 @@ class Rasterizer:
         img = Image.new("L", (Wss, Hss), 0)
         # PIL renders with square pixels; stretch horizontally by `aspect` afterwards.
         d = ImageDraw.Draw(img)
-        d.text((0, OYss), ch, font=self.px, fill=255, anchor="ls")
+        d.text((0, OYss), self.draw_char(ch), font=self.px, fill=255, anchor="ls")
         a = np.asarray(img, dtype=np.float32) / 255.0
         # horizontal stretch: resample width by aspect, then shift so the pen lands on OXss
         if abs(self.aspect - 1.0) > 1e-6:
@@ -204,9 +240,8 @@ def underline_tiles(S, baseline_row, edge, lines, aspect):
     return out
 
 
-def ttf_kerning(tt, chars, scale):
+def ttf_kerning(tt, chars, scale, cmap):
     """Pair kerning in output px for the given characters, from kern + GPOS PairPos."""
-    cmap = tt.getBestCmap()
     name2code = {}
     for ch in chars:
         gn = cmap.get(ord(ch))
@@ -259,11 +294,11 @@ def ttf_kerning(tt, chars, scale):
     return out
 
 
-def make_thumbnail(path, index, edge):
+def make_thumbnail(rz, path, index, edge):
     img = Image.new("L", (mx.THUMB_W * 4, mx.THUMB_H * 4), 0)
-    f = ImageFont.truetype(path, 44 * 4, index=index)
+    f = ImageFont.truetype(path, 44 * 4, index=index, encoding=rz.encoding)
     d = ImageDraw.Draw(img)
-    d.text((mx.THUMB_W * 2, 52 * 4), "Aa", font=f, fill=255, anchor="ms")
+    d.text((mx.THUMB_W * 2, 52 * 4), rz.draw_char("A") + rz.draw_char("a"), font=f, fill=255, anchor="ms")
     a = np.asarray(img.resize((mx.THUMB_W, mx.THUMB_H), Image.BOX), dtype=np.float32) / 255.0
     if edge != "none":
         e = np.asarray(img.filter(__import__("PIL.ImageFilter", fromlist=["MaxFilter"]).MaxFilter(9))
@@ -273,6 +308,95 @@ def make_thumbnail(path, index, edge):
         v = 0xee * (1 - a)
     q = np.clip(np.rint(v / 0x22) * 0x22, 0, 0xee).astype(np.uint8)
     return q.tolist()
+
+
+def vertical_metrics(rz, chars, edge, lines, baseline_off=None, log=print):
+    """(ascent, descent, baseline offset) in rows, with `lines` already 0 for a no-edge font."""
+    # ascent = height of h/H/l, descent = depth of p/g
+    def h_of(ch, which):
+        b = rz.bounds(ch)
+        return b[which] if b else None
+    letter_tops = [v for v in (h_of("h", 3), h_of("H", 3), h_of("l", 3)) if v is not None]
+    asc_units = max(letter_tops) if letter_tops else rz.tt["hhea"].ascent
+    desc_units = -min(v for v in (h_of("p", 1), h_of("g", 1), -abs(rz.tt["hhea"].descent)) if v is not None)
+    ascent = int(round(asc_units * rz.sy)); descent = int(round(abs(desc_units) * rz.sy))
+    baseline_off = baseline_off if baseline_off is not None else (11 if edge == "none" else 5)
+    baseline_off = max(baseline_off, lines + 2)
+    # make sure the tallest glyph (plus edge and the leading empty row) fits above row 0
+    lead_rows = 1 if edge != "none" else 0
+    tallest = max((rz.bounds(c)[3] for c in chars if rz.bounds(c)), default=asc_units)
+    need = int(math.ceil(tallest * rz.sy)) + lines + lead_rows + 1
+    if ascent + baseline_off < need:
+        log(f"raising baseline offset {baseline_off} -> {need - ascent} so tall glyphs fit")
+        baseline_off = need - ascent
+    return ascent, descent, baseline_off
+
+
+def specimen(has):
+    """SPECIMEN without the lines a font would leave blank; `has` tests one character."""
+    return [line for line in SPECIMEN if any(has(c) for c in line)]
+
+
+def sample_text(rz, per_line=13, rows=8):
+    """For a font with no Latin letters: lines of its own script, then whatever ASCII it does have."""
+    typed = specimen(rz.glyph_name)
+    def visible(c):      # private-use counts: some fonts have nothing else
+        cat = unicodedata.category(chr(c))
+        return c > 126 and cat[0] not in "MZ" and cat not in ("Cc", "Cf", "Cs")
+    codes = sorted(filter(visible, rz.cmap), key=lambda c: (unicodedata.category(chr(c))[0] != "L", c))
+    codes = codes[:per_line * max(1, rows - len(typed))]
+    return ["".join(map(chr, codes[i:i + per_line])) for i in range(0, len(codes), per_line)] + typed
+
+
+def source_sheet(ttf, out, scanlines=46, aspect=1.17, spacing=0.95, kern=True, edge="none", lines=3,
+                 index=0, font=None, scale=3):
+    """Specimen of the source outlines, laid out like mx.render_sheet so the two can be compared
+    glyph for glyph.  `font` is the converted file; without one the layout comes from the metrics
+    convert() would use, which makes this the preview before converting.  `out` is a path or stream.
+    Returns how many of the 94 printable ASCII characters and 52 letters the font has; with no
+    letters, the preview shows its own script too."""
+    lines = lines if edge != "none" else 0
+    rz = Rasterizer(ttf, scanlines, aspect, edge, lines, spacing, index)
+    if font is not None:
+        text = specimen(lambda c: ord(c) in font.glyphs)
+        advance = {c: g.advance for c, g in font.glyphs.items()}
+        kmap = {(a, b): k for a, b, k in font.kerning}
+        baseline_row = font.baseline_row
+        LH, width = mx.sheet_size(font, text)
+    else:
+        text = specimen(rz.glyph_name) if rz.letter_count() else sample_text(rz)
+        chars = sorted(set("".join(text)))
+        advance = {ord(c): int(round(rz.advance(c) * rz.sx * spacing)) for c in chars if rz.glyph_name(c)}
+        if not advance:
+            raise ValueError("This font has no characters to preview.")
+        kmap = {(a, b): k for a, b, k in ttf_kerning(rz.tt, chars, rz.sx * spacing, rz.cmap)} if kern else {}
+        ascent, _, baseline_off = vertical_metrics(rz, [chr(c) for c in range(33, 127)] + chars, edge, lines, log=lambda m: None)
+        baseline_row = ascent + baseline_off
+        depth = max((-rz.bounds(chr(c))[1] for c in advance if rz.bounds(chr(c))), default=0)
+        LH = baseline_row + int(math.ceil(depth * rz.sy)) + lines + 5
+        width = max(sum(advance.get(ord(ch), 0) for ch in line) for line in text) + 40
+    W, H = width, LH * len(text) + 10
+    canvas = Image.new("L", (W * SS, H * SS), 0)
+    for li, line in enumerate(text):
+        x0 = 10; prev = None
+        for ch in line:
+            c = ord(ch)
+            if c not in advance:
+                continue
+            if prev is not None:
+                x0 += kmap.get((prev, c), 0)
+            l, t, r, b = rz.px.getbbox(rz.draw_char(ch), anchor="ls")
+            if r > l and b > t:
+                img = Image.new("L", (r - l + 2, b - t + 2), 0)
+                ImageDraw.Draw(img).text((1 - l, 1 - t), rz.draw_char(ch), font=rz.px, fill=255, anchor="ls")
+                img = img.resize((int(round(img.width * aspect)), img.height), Image.BILINEAR)
+                canvas.paste(255, (x0 * SS + int(round((l - 1) * aspect)), (li * LH + baseline_row) * SS + t - 1), img)
+            x0 += advance[c]; prev = c
+    mask = canvas.resize((W * scale, H * scale), Image.BOX)
+    sheet = Image.new("RGB", mask.size, (30, 30, 30))
+    sheet.paste((255, 255, 255), (0, 0), mask)
+    sheet.save(out, "PNG")
+    return rz.ascii_count(), rz.letter_count()
 
 
 def convert(ttf, scanlines=46, code="9100", master_id="9000", name=None, edge="none", lines=3,
@@ -285,25 +409,11 @@ def convert(ttf, scanlines=46, code="9100", master_id="9000", name=None, edge="n
         chars = "".join(chr(c) for c in range(33, 127))
     chars = [c for c in chars if 33 <= ord(c) < mx.NSLOTS]
     rz = Rasterizer(ttf, scanlines, aspect, edge, lines if edge != "none" else 0, spacing, index)
+    if not any(rz.glyph_name(c) for c in chars):
+        raise ValueError("This font has none of those characters, so there is nothing to convert.")
     S = scanlines
-    # vertical metrics: ascent = height of h/H/l, descent = depth of p/g
-    def h_of(ch, which):
-        b = rz.bounds(ch)
-        return b[which] if b else None
-    letter_tops = [v for v in (h_of("h", 3), h_of("H", 3), h_of("l", 3)) if v is not None]
-    asc_units = max(letter_tops) if letter_tops else rz.tt["hhea"].ascent
-    desc_units = -min(v for v in (h_of("p", 1), h_of("g", 1), -abs(rz.tt["hhea"].descent)) if v is not None)
-    ascent = int(round(asc_units * rz.sy)); descent = int(round(abs(desc_units) * rz.sy))
     lines = lines if edge != "none" else 0
-    baseline_off = baseline_off if baseline_off is not None else (11 if edge == "none" else 5)
-    baseline_off = max(baseline_off, lines + 2)
-    # make sure the tallest glyph (plus edge and the leading empty row) fits above row 0
-    lead_rows = 1 if edge != "none" else 0
-    tallest = max((rz.bounds(c)[3] for c in chars if rz.bounds(c)), default=asc_units)
-    need = int(math.ceil(tallest * rz.sy)) + lines + lead_rows + 1
-    if ascent + baseline_off < need:
-        log(f"raising baseline offset {baseline_off} -> {need - ascent} so tall glyphs fit")
-        baseline_off = need - ascent
+    ascent, descent, baseline_off = vertical_metrics(rz, chars, edge, lines, baseline_off, log)
     baseline_row = ascent + baseline_off
 
     font = mx.MaxineFont()
@@ -338,8 +448,8 @@ def convert(ttf, scanlines=46, code="9100", master_id="9000", name=None, edge="n
         blobs[c] = (g, mx.encode_glyph(face.tolist(), ed.tolist(), has_edge, lead))
     font.max_advance = max_adv
     if kern:
-        font.kerning = ttf_kerning(rz.tt, chars, rz.sx * spacing)
-    font.footer = mx.set_thumbnail(mx.default_footer(), make_thumbnail(ttf, index, edge))
+        font.kerning = ttf_kerning(rz.tt, chars, rz.sx * spacing, rz.cmap)
+    font.footer = mx.set_thumbnail(mx.default_footer(), make_thumbnail(rz, ttf, index, edge))
 
     data = mx.build(font, blobs, code, has_edge, edge == "shadow")
     os.makedirs(out, exist_ok=True)

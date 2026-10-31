@@ -3,22 +3,27 @@
   border-top: 1px solid var(--color-border);
 }
 
-.toggle {
-  font-size: inherit;
-  font-weight: inherit;
-  letter-spacing: inherit;
-  text-transform: inherit;
-  color: inherit;
+.header {
+  cursor: pointer;
+}
+
+.header:hover {
+  background: var(--color-surface-1);
+}
+
+.chevron {
+  font-size: var(--font-size-md);
+  line-height: 1;
 }
 
 .body {
-  height: 112px;
+  height: calc(100px * var(--font-scale));
   overflow: auto;
   padding: 6px var(--space-3);
   background: var(--color-well);
   font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
-  line-height: 1.55;
+  font-size: var(--font-size-xs);
+  line-height: 1.6;
   color: var(--color-text-secondary);
   white-space: pre-wrap;
   user-select: text;

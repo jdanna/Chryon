@@ -5,9 +5,38 @@
     "shot": "convert-empty"
   },
   {
+    "click": "Apple Braille",
+    "wait": 1500,
+    "eval": "[...document.querySelectorAll('button')].find((b) => b.textContent.startsWith('Convert to')).disabled",
+    "expect": true,
+    "shot": "no-ascii"
+  },
+  {
+    "click": "Wingdings",
+    "wait": 1500,
+    "eval": "[...document.querySelectorAll('button')].find((b) => b.textContent.startsWith('Convert to')).disabled",
+    "expect": false,
+    "shot": "symbol-font"
+  },
+  {
+    "click": "Kohinoor Gujarati Bold",
+    "wait": 1500,
+    "eval": "[document.querySelector('main [class*=\"sectionMeta\"]').textContent.includes('no Latin letters'), [...document.querySelectorAll('button')].find((b) => b.textContent.startsWith('Convert to')).disabled]",
+    "expect": [
+      true,
+      false
+    ],
+    "shot": "no-letters"
+  },
+  {
     "drop": "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
-    "eval": "[...document.querySelectorAll('label')].find((l) => l.textContent.includes('Display name')).querySelector('input').value",
-    "expect": "Arial Bold"
+    "wait": 1500,
+    "eval": "[document.querySelectorAll('main img').length, [...document.querySelectorAll('label')].find((l) => l.textContent.includes('Display name')).querySelector('input').value]",
+    "expect": [
+      1,
+      "Arial Bold"
+    ],
+    "shot": "source-preview"
   },
   {
     "fill": [
@@ -18,7 +47,11 @@
     "wait": 4000,
     "eval": "document.querySelector('[class*=\"statValue\"]').textContent",
     "expect": "98",
-    "shot": "convert-done"
+    "shot": "side-by-side"
+  },
+  {
+    "eval": "(() => { const s = [...document.querySelectorAll('main img')].map((i) => [i.naturalWidth, i.naturalHeight]); return s.length === 2 && s[0][0] === s[1][0] && s[0][1] === s[1][1] })()",
+    "expect": true
   },
   {
     "select": [
@@ -38,9 +71,96 @@
     "shot": "convert-shadow"
   },
   {
+    "select": [
+      "Style",
+      "none"
+    ],
+    "fill": [
+      "Font code",
+      "9210"
+    ]
+  },
+  {
+    "fill": [
+      "Sizes above",
+      "1"
+    ]
+  },
+  {
+    "fill": [
+      "Sizes below",
+      "1"
+    ]
+  },
+  {
+    "fill": [
+      "Size step",
+      "6"
+    ],
+    "eval": "[...document.querySelectorAll('[class*=\"convertBar\"] [class*=\"hint\"]')].map((e) => e.textContent).join(' ').includes('.9210–.9212: 40, 46, 52 scanlines')",
+    "expect": true
+  },
+  {
+    "fill": [
+      "Scanlines",
+      "12"
+    ],
+    "eval": "document.querySelector('[class*=\"convertBar\"] button').disabled",
+    "expect": true
+  },
+  {
+    "fill": [
+      "Scanlines",
+      "46"
+    ],
+    "eval": "document.querySelector('[class*=\"convertBar\"] button').disabled",
+    "expect": false
+  },
+  {
+    "click": "Convert 3 sizes",
+    "wait": 9000,
+    "eval": "[...document.querySelectorAll('[class*=\"statValue\"]')].map((e) => e.textContent)[2]",
+    "expect": "52",
+    "shot": "batch-done"
+  },
+  {
     "click": "Upload",
-    "eval": "document.querySelectorAll('[class*=\"local\"] [class*=\"row\"]').length",
-    "expect": 2,
+    "eval": "[document.querySelectorAll('[class*=\"groupRow\"]').length, document.querySelector('[class*=\"groupRow\"]').innerText.replace(/\\s+/g, ' ').replace(/ [\\d.]+ KB$/, '')]",
+    "expect": [
+      1,
+      "9000 Arial Bold 5 variants · 40–52 scanlines"
+    ],
     "shot": "upload-disconnected"
+  },
+  {
+    "eval": "(() => { document.querySelector('[class*=\"twirl\"]').click(); return new Promise((r) => setTimeout(() => r(document.querySelectorAll('[class*=\"local\"] [class*=\"row\"]').length), 200)) })()",
+    "expect": 5,
+    "shot": "groups-open"
+  },
+  {
+    "click": "Select all",
+    "eval": "document.querySelectorAll('[class*=\"local\"] [class*=\"row\"] input:checked').length",
+    "expect": 5
+  },
+  {
+    "eval": "(() => { document.querySelector('[class*=\"local\"] [class*=\"row\"] input').click(); return new Promise((r) => setTimeout(() => r([document.querySelector('[class*=\"listBar\"] input').indeterminate, document.querySelector('[class*=\"selectedCount\"]').textContent]), 200)) })()",
+    "expect": [
+      true,
+      "4 selected"
+    ],
+    "shot": "select-all"
+  },
+  {
+    "click": "Delete selected",
+    "wait": 800,
+    "eval": "document.querySelectorAll('[class*=\"local\"] [class*=\"row\"]').length",
+    "expect": 1
+  },
+  {
+    "eval": "[document.querySelector('[class*=\"listBar\"] button').disabled, !!document.querySelector('[class*=\"local\"] img')]",
+    "expect": [
+      true,
+      true
+    ]
   }
 ]

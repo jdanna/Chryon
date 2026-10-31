@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JSON-lines backend for the MAXINE Font Studio Electron app (src/main/bridge.ts).
+JSON-lines backend for the MAXINE! Studio Electron app (src/main/bridge.ts).
 
     stdin:  {"id": 1, "cmd": "convert", "args": {...}}
     stdout: {"id": 1, "ok": true, "result": ...}  or  {"id": 1, "ok": false, "error": "..."}
@@ -10,7 +10,7 @@ Every request runs on its own thread, so a font scan or an FTP transfer never
 blocks a conversion.  The process exits when stdin closes (the app went away).
 The converter needs Pillow, numpy and fontTools; FTP uses only the stdlib.
 """
-import ftplib, glob, json, os, re, sys, threading, traceback
+import base64, ftplib, glob, io, json, os, re, sys, threading, traceback
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -81,7 +81,7 @@ def font_info(path):
             "mtime": os.path.getmtime(path), "preview": os.path.exists(path + ".png")}
     try:
         f = mx.load(path)
-        info.update(name=f.name, desc=(f.desc1 + " " + f.desc2).strip(), glyphs=len(f.glyphs), kern=len(f.kerning),
+        info.update(name=f.name, desc=(f.desc1 + " " + f.desc2).strip(), master=f.digits[:4], glyphs=len(f.glyphs), kern=len(f.kerning),
                     cell_rows=f.cell_rows, ascent=f.ascent, descent=f.descent, baseline_row=f.baseline_row)
     except Exception:
         info.update(name="?", desc="unreadable")
@@ -94,14 +94,26 @@ def outputs(args):
     return res
 
 
-def convert(args):
+def source_preview(args):
     import ttf2maxine
+    png = io.BytesIO()
+    ascii_count, letters = ttf2maxine.source_sheet(args["ttf"], png, int(args["scanlines"]), float(args["aspect"]), float(args["spacing"]),
+                                                   bool(args["kern"]), args["edge"], int(args["lines"]), int(args.get("index", 0)))
+    return {"image": base64.b64encode(png.getvalue()).decode(), "ascii": ascii_count, "letters": letters}
+
+
+def convert(args):
+    import maxine_font as mx, ttf2maxine
     logs = []
-    path, png = ttf2maxine.convert(
+    path, _ = ttf2maxine.convert(
         args["ttf"], scanlines=int(args["scanlines"]), code=str(args["code"]), master_id=str(args["master_id"]),
         name=args.get("name") or None, edge=args["edge"], lines=int(args["lines"]), aspect=float(args["aspect"]),
-        spacing=float(args["spacing"]), kern=bool(args["kern"]), out=args["out"], preview=True,
+        spacing=float(args["spacing"]), kern=bool(args["kern"]), out=args["out"],
         index=int(args.get("index", 0)), log=logs.append)
+    font = mx.load(path)
+    mx.render_sheet(font, path + ".png", lines=ttf2maxine.specimen(lambda c: ord(c) in font.glyphs))
+    ttf2maxine.source_sheet(args["ttf"], path + ".source.png", int(args["scanlines"]), float(args["aspect"]),
+                            float(args["spacing"]), index=int(args.get("index", 0)), font=font)
     return {"font": font_info(path), "log": logs}
 
 
@@ -111,7 +123,7 @@ def convert(args):
 def ftp_connect(cfg):
     host = (cfg.get("host") or "").strip()
     if not host:
-        raise ValueError("Enter the MAXINE's FTP host or IP address.")
+        raise ValueError("Enter the MAXINE!'s FTP host or IP address.")
     ftp = ftplib.FTP()
     ftp.connect(host, int(cfg.get("port") or 21), timeout=20)
     ftp.login(cfg.get("user") or "anonymous", cfg.get("password") or "")
@@ -196,7 +208,7 @@ def ftp_delete(args):
     return True
 
 
-COMMANDS = {"system_fonts": system_fonts, "faces": faces, "outputs": outputs, "convert": convert,
+COMMANDS = {"system_fonts": system_fonts, "faces": faces, "outputs": outputs, "source_preview": source_preview, "convert": convert,
             "ftp_list": ftp_list, "ftp_upload": ftp_upload, "ftp_delete": ftp_delete}
 
 

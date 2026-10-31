@@ -1,13 +1,13 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from 'fs'
 import { join } from 'path'
-import type { ConvertRequest, FontInfo, FtpConfig, Settings, UploadedFile, UploadProgress } from '@shared/types'
+import type { ConvertRequest, FontInfo, FtpConfig, Settings, SourcePreview, SourcePreviewRequest, UploadedFile, UploadProgress } from '@shared/types'
 import { Bridge } from './bridge'
 import { loadSettings, saveSettings } from './settings'
 
 /** Fonts go here rather than next to the source; the Upload tab and Export pick them up. */
 function tempDir(): string {
-  const dir = join(app.getPath('temp'), 'MAXINE Font Studio')
+  const dir = join(app.getPath('temp'), 'MAXINE Studio')
   mkdirSync(dir, { recursive: true })
   return dir
 }
@@ -16,6 +16,12 @@ function tempDir(): string {
 function tempFile(file: string): string {
   if (!/^\.\d{4}$/.test(file)) throw new Error(`Not a font file name: ${file}`)
   return join(tempDir(), file)
+}
+
+function removeFont(path: string): void {
+  rmSync(path, { force: true })
+  rmSync(path + '.png', { force: true })
+  rmSync(path + '.source.png', { force: true })
 }
 
 const plural = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? '' : 's'}`
@@ -35,6 +41,10 @@ export function registerIpc(win: BrowserWindow): Bridge {
     })
     return canceled ? null : filePaths[0]
   })
+  ipcMain.handle('fonts:source-preview', async (_, req: SourcePreviewRequest) => {
+    const preview = await bridge.call<SourcePreview>('source_preview', req)
+    return { ...preview, image: `data:image/png;base64,${preview.image}` }
+  })
   ipcMain.handle('fonts:convert', (_, req: ConvertRequest) =>
     bridge.call('convert', {
       ttf: req.ttf, index: req.index, name: req.name, scanlines: req.scanlines, code: req.code, master_id: req.masterId,
@@ -46,8 +56,8 @@ export function registerIpc(win: BrowserWindow): Bridge {
     const dir = tempDir()
     return { dir, files: await bridge.call<FontInfo[]>('outputs', { dir }) }
   })
-  ipcMain.handle('outputs:preview', (_, file: string) => {
-    const png = tempFile(file) + '.png'
+  ipcMain.handle('outputs:preview', (_, file: string, kind: 'maxine' | 'source') => {
+    const png = tempFile(file) + (kind === 'source' ? '.source.png' : '.png')
     return existsSync(png) ? `data:image/png;base64,${readFileSync(png).toString('base64')}` : null
   })
   // A folder picker, not a save dialog: macOS refuses dotfile names in NSSavePanel
@@ -63,10 +73,20 @@ export function registerIpc(win: BrowserWindow): Bridge {
     copyFileSync(source, dest)
     return dest
   })
-  ipcMain.handle('outputs:delete', (_, file: string) => {
-    const path = tempFile(file)
-    rmSync(path, { force: true })
-    rmSync(path + '.png', { force: true })
+  ipcMain.handle('outputs:delete', (_, file: string) => removeFont(tempFile(file)))
+  ipcMain.handle('outputs:delete-many', async (_, files: string[]) => {
+    const paths = files.map(tempFile)
+    const { response } = await dialog.showMessageBox(win, {
+      type: 'warning',
+      message: `Delete ${plural(files.length, 'font')} from the temp folder?`,
+      detail: `${files.join(', ')}\n\nFonts on the MAXINE! aren't affected.`,
+      buttons: ['Delete', 'Cancel'],
+      defaultId: 1,
+      cancelId: 1
+    })
+    if (response !== 0) return false
+    paths.forEach(removeFont)
+    return true
   })
   ipcMain.handle('outputs:open-folder', () => shell.openPath(tempDir()))
 
@@ -93,7 +113,7 @@ export function registerIpc(win: BrowserWindow): Bridge {
     const { response } = await dialog.showMessageBox(win, {
       type: 'warning',
       message: `Delete ${name} from ${cfg.host}?`,
-      detail: 'This removes the file from the MAXINE and cannot be undone.',
+      detail: 'This removes the file from the MAXINE! and cannot be undone.',
       buttons: ['Delete', 'Cancel'],
       defaultId: 1,
       cancelId: 1

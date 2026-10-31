@@ -8,7 +8,7 @@ interface Pending {
 }
 
 function pythonCommand(): { bin: string; args: string[] } {
-  // Stop .pyc files landing inside the app, which would break a signed bundle's seal
+  // Keep .pyc files out of the install folder, which may be read-only
   const cache = ['-X', `pycache_prefix=${join(app.getPath('userData'), 'pycache')}`]
   if (!app.isPackaged) {
     return { bin: process.platform === 'win32' ? 'python' : 'python3', args: [...cache, '-X', 'utf8'] }

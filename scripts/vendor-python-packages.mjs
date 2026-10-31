@@ -1,49 +1,18 @@
 #!/usr/bin/env node
 /**
- * Vendors onnxruntime/numpy/Pillow (plus their transitive deps) into a
- * previously-downloaded bundled Python interpreter's site-packages, so
- * electron-builder's existing `python -> python` extraResources copy
- * (see electron-builder.yml) bundles them for free -- no separate
- * extraResources entry needed. Must run AFTER download-python.mjs for the
- * same target (that script's output directory is a required input here).
+ * Vendors the converter's dependencies (resources/requirements-prod.txt) into
+ * a previously-downloaded bundled Python interpreter's site-packages, so
+ * electron-builder's `python -> python` extraResources copy bundles them.
+ * Must run AFTER download-python.mjs for the same target.
  *
- * Runs pip in explicit cross-platform download mode (--platform,
- * --python-version, --implementation, --abi all passed together, so pip
- * resolves/downloads wheels for the TARGET without needing to execute
- * anything built for it) via a HOST interpreter -- i.e. one that can
- * actually run on this machine. This is what lets a single machine (a
- * developer's Mac, say) vendor packages for a different target (Windows)
- * that it physically cannot execute a binary for. An earlier version of
- * this script used the target interpreter's own bundled pip instead, on
- * the theory that each target's real build always happens on matching
- * hardware anyway -- true for the Windows CI runner, but it also silently
- * broke `npm run release`'s local unsigned build (which builds mac, then
- * win, then linux from one machine): running win32-x64's python.exe from
- * macOS failed with ENOEXEC, since a Windows PE binary simply cannot
- * execute there. Downloading wheels for a different platform never needs
- * to run that platform's code (no sdist builds happen here --
- * --only-binary=:all: guarantees that), so there was never a real need for
- * the target interpreter specifically -- any modern-enough pip can do it
- * given the right flags.
- *
- * The host interpreter is resolved the same way as any other target here:
- * via download-python.mjs's own output for THIS machine's platform+arch
- * (downloaded on demand if missing), so this script still needs no
- * separately-installed system Python/pip at all -- self-contained either
- * way, just self-contained using the HOST's own copy instead of the
- * TARGET's when they differ.
- *
- * darwin-arm64, win32-x64, and linux-x64 are the supported vendoring targets
- * (matching Rank by Similarity / Match By Image's supported platforms --
- * see main.js's isSimilarityAvailable()). onnxruntime has no macOS Intel
- * (x86_64) wheel as of the pin in resources/requirements-prod.txt (dropped
- * after 1.23.2), so that one target is intentionally excluded rather than
- * pinning a second, older Python+onnxruntime stack just for it.
+ * Runs pip in cross-platform download mode through a HOST interpreter (this
+ * machine's own, from download-python.mjs), so one Mac can vendor for every
+ * target without being able to execute that target's binaries. Only wheels
+ * are used (--only-binary=:all:), so nothing built for the target ever runs.
  *
  * Usage:
  *   node scripts/vendor-python-packages.mjs <platform> <arch>
- *   (same platform/arch values as download-python.mjs's new-style args,
- *   e.g. "darwin arm64" or "win32 x64")
+ *   (same values as download-python.mjs, e.g. "darwin arm64" or "win32 x64")
  *
  * Exit codes:
  *   0 — success

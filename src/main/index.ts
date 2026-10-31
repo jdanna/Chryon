@@ -11,12 +11,20 @@ interface WindowState {
   y?: number
 }
 
+const APP_NAME = 'MAXINE! Studio'
+
+// The name shows in menus and the About panel only. Nothing on disk may carry the "!",
+// so userData is pinned first; the install folder comes from productName in electron-builder.yml.
+const userData = app.getPath('userData')
+app.setName(APP_NAME)
+app.setPath('userData', userData)
+
 const statePath = (): string => join(app.getPath('userData'), 'window-state.json')
 
 function loadWindowState(): WindowState {
   try {
     const saved = JSON.parse(readFileSync(statePath(), 'utf8'))
-    const state: WindowState = { width: Math.max(Number(saved.width) || 1320, 1040), height: Math.max(Number(saved.height) || 860, 680) }
+    const state: WindowState = { width: Math.max(Number(saved.width) || 1440, 1160), height: Math.max(Number(saved.height) || 920, 700) }
     // A position saved on a since-disconnected monitor would restore off-screen
     const onScreen = screen.getAllDisplays().some(({ workArea: wa }) =>
       saved.x < wa.x + wa.width - 40 && saved.x + state.width > wa.x + 40 && saved.y >= wa.y - 20 && saved.y < wa.y + wa.height - 40)
@@ -26,7 +34,7 @@ function loadWindowState(): WindowState {
     }
     return state
   } catch {
-    return { width: 1320, height: 860 }
+    return { width: 1440, height: 920 }
   }
 }
 
@@ -44,10 +52,10 @@ let bridge: Bridge | null = null
 function createWindow(): void {
   const win = new BrowserWindow({
     ...loadWindowState(),
-    minWidth: 1040,
-    minHeight: 680,
+    minWidth: 1160,
+    minHeight: 700,
     backgroundColor: '#1a1a1a',
-    title: 'MAXINE Font Studio',
+    title: APP_NAME,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     autoHideMenuBar: true,
     icon: process.platform === 'linux' && app.isPackaged ? join(process.resourcesPath, 'icon.png') : undefined,
@@ -77,8 +85,8 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
-  app.setAppUserModelId('com.retrograde.maxinefontstudio')
-  app.setAboutPanelOptions({ applicationName: 'MAXINE Font Studio', applicationVersion: app.getVersion() })
+  app.setAppUserModelId('com.retrograde.maxinestudio')
+  app.setAboutPanelOptions({ applicationName: APP_NAME, applicationVersion: app.getVersion() })
   createWindow()
 })
 

@@ -1,63 +1,72 @@
 #!/usr/bin/env python3
 """
-Draws the app icon from a real MAXINE glyph (the "M" of .0000, Swiss 721 Bold)
-as a lit CRT tile, and writes resources/icon.png, icon.ico and icon.icns.
-Only needs rerunning if the design changes; icon.icns needs macOS's iconutil.
+Draws the app icon, the red "!" from the MAXINE! badge on Luminary's dark gradient
+tile, and writes resources/icon.png, icon.ico and icon.icns. Only needs rerunning
+if the design changes; icon.icns needs macOS's iconutil.
 
     python3 scripts/make-icon.py
 """
-import os, subprocess, sys, tempfile
+import os, subprocess, tempfile
 import numpy as np
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(ROOT, "tools"))
-import maxine_font as mx
-
 SIZE = 1024
-INSET = 100           # transparent margin, per the macOS icon grid
-CORNER = 185
-GLOW = (74, 158, 255)
+AA = 4                # edges are drawn this much larger, then reduced
+CORNER = 230          # same tile as Luminary's icon
+BAR = [(432, 192), (592, 192), (578, 576), (446, 576)]   # the badge's tapered stem
+DOT = (442, 661, 582, 831)
+MARK_TOP, MARK_BOTTOM = "#f0402f", "#c8301f"
 
 
-def glyph_mask():
-    face = mx.load(os.path.join(ROOT, "fonts", ".0000")).glyphs[ord("M")].raster()[0]
-    a = np.array(face, np.uint8)
-    rows, cols = np.where(a > 0)
-    return Image.fromarray(a[rows.min():rows.max() + 1, cols.min():cols.max() + 1])
+def rgb(color):
+    return np.array([int(color[i:i + 2], 16) for i in (1, 3, 5)], np.float64)
+
+
+def ramp(t, stops):
+    """Color and opacity along `t`, from (offset, color, opacity) stops."""
+    offsets = [s[0] for s in stops]
+    colors = np.stack([rgb(s[1]) for s in stops])
+    channels = [np.interp(t, offsets, colors[:, i]) for i in range(3)]
+    return np.stack(channels, axis=-1), np.interp(t, offsets, [s[2] for s in stops])
+
+
+def over(base, color, alpha):
+    return base * (1 - alpha[..., None]) + color * alpha[..., None]
+
+
+def radial(base, cx, cy, r, stops):
+    y, x = np.mgrid[0:SIZE, 0:SIZE] + 0.5
+    t = np.hypot(x / SIZE - cx, y / SIZE - cy) / r
+    return over(base, *ramp(np.clip(t, 0, 1), stops))
+
+
+def shape_mask(draw):
+    img = Image.new("L", (SIZE * AA, SIZE * AA), 0)
+    draw(ImageDraw.Draw(img))
+    return np.asarray(img.resize((SIZE, SIZE), Image.BOX), np.float64) / 255
+
+
+def mark(base, top, bottom, mask):
+    """One part of the "!", with the red ramp running over that part's own height."""
+    t = np.clip((np.arange(SIZE) + 0.5 - top) / (bottom - top), 0, 1)
+    colors = np.outer(1 - t, rgb(MARK_TOP)) + np.outer(t, rgb(MARK_BOTTOM))
+    return over(base, np.repeat(colors[:, None, :], SIZE, axis=1), mask)
 
 
 def main():
-    tile = SIZE - 2 * INSET
-    grad = np.linspace(0, 1, tile)[:, None, None]
-    bg = (np.array((30, 34, 40)) * (1 - grad) + np.array((14, 16, 20)) * grad)
-    img = Image.fromarray(np.repeat(bg, tile, axis=1).astype(np.uint8))
+    y, x = np.mgrid[0:SIZE, 0:SIZE] + 0.5
+    img, _ = ramp((x + y) / (2 * SIZE), [(0, "#202e3b", 1), (0.42, "#14222f", 1), (1, "#060e17", 1)])
+    img = radial(img, 0.42, 0.50, 0.58, [(0, "#1a4a7a", 0.55), (1, "#060e17", 0)])
+    img = radial(img, 0.50, 0.50, 0.44, [(0, "#d0322a", 0.42), (0.55, "#8a2420", 0.16), (1, "#060e17", 0)])
 
-    # The glyph, enlarged with hard edges so its scanlines stay visible
-    g = glyph_mask()
-    w = int(tile * 0.66); h = int(w * g.height / g.width)
-    g = g.resize((w, h), Image.NEAREST)
-    pos = ((tile - w) // 2, (tile - h) // 2 - 16)
-    ink = Image.new("L", (tile, tile), 0); ink.paste(g, pos)
-    img.paste(Image.new("RGB", (tile, tile), GLOW), (0, 0), ink.filter(ImageFilter.GaussianBlur(26)).point(lambda v: v // 3))
-    img.paste(Image.new("RGB", (tile, tile), (238, 244, 252)), (0, 0), ink)
+    scaled = lambda points: [(px * AA, py * AA) for px, py in points]
+    img = mark(img, BAR[0][1], BAR[2][1], shape_mask(lambda d: d.polygon(scaled(BAR), fill=255)))
+    img = mark(img, DOT[1], DOT[3], shape_mask(lambda d: d.rectangle([v * AA for v in DOT], fill=255)))
 
-    # CRT scanlines across the whole tile
-    lines = Image.new("L", (tile, tile), 0); d = ImageDraw.Draw(lines)
-    pitch = 12
-    for y in range(0, tile, pitch):
-        d.rectangle((0, y, tile, y + pitch // 3), fill=70)
-    img.paste(Image.new("RGB", (tile, tile), (0, 0, 0)), (0, 0), lines)
-
-    # The lower-third bar, the thing this hardware exists to draw
-    bar = Image.new("L", (tile, tile), 0)
-    ImageDraw.Draw(bar).rectangle((pos[0], pos[1] + h + 44, pos[0] + w, pos[1] + h + 74), fill=255)
-    img.paste(Image.new("RGB", (tile, tile), GLOW), (0, 0), bar)
-
-    mask = Image.new("L", (tile * 2, tile * 2), 0)
-    ImageDraw.Draw(mask).rounded_rectangle((0, 0, tile * 2 - 1, tile * 2 - 1), CORNER * 2, fill=255)
-    out = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
-    out.paste(img, (INSET, INSET), mask.resize((tile, tile), Image.LANCZOS))
+    tile = shape_mask(lambda d: d.rounded_rectangle((0, 0, SIZE * AA - 1, SIZE * AA - 1), CORNER * AA, fill=255))
+    rgba = np.dstack((img, tile * 255))
+    out = Image.fromarray(np.clip(np.rint(rgba), 0, 255).astype(np.uint8))
 
     res = os.path.join(ROOT, "resources")
     out.save(os.path.join(res, "icon.png"))

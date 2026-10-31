@@ -168,6 +168,22 @@ The border in `.3000` is a ≈3-px rounded, antialiased dilation of the face;
 the shadow in `.5000` is the face+border copied down-left (≈4 rows, ≈3 px)
 into the same edge layer.
 
+### Size series in the originals
+
+A series is one master id and display name, consecutive codes, and sizes ascending
+with the code. The edge stays the same thickness at every size; only the browser
+description differs. Scanlines run from 22 to 100, and 24 of the 29 steps are +4:
+
+| codes | master | face | edge | scanlines |
+|---|---|---|---|---|
+| 3000–3013 | 5340 | Dutch 766 Bold | Border 3 | 40 44 48 52 60 64 68 72 78 82 86 90 96 100 |
+| 5000–5006 | 5293 | Humanist 521 Bold Italic | Border & Shdw 4 | 22 26 30 34 38 42 46 |
+| 5007–5016 | 5290 | Humanist 521 | Border & Shdw 2 | 30 34 38 42 44 48 52 56 58 62 |
+
+The app's Batch sizes option follows this (`batch` in `ConvertTab.tsx`, default step 4).
+`Sizes above` and `Sizes below` count extra fonts on each side of the Scanlines value;
+the first code is always the smallest size.
+
 ## Converter design (`tools/ttf2maxine.py`)
 
 Rasterizes each glyph with Pillow at 4× supersampling, stretches by
@@ -185,14 +201,19 @@ Defaults chosen to mimic the originals: baseline offset 11 (no edge) / 5
 version 1317, master id 9000, chars 33–126 (the originals stop at 122; codes
 123–191 are untested on hardware).
 
-## Electron app (MAXINE Font Studio)
+## Electron app (MAXINE! Studio)
+
+The "!" is display-only: UI text, window title, macOS menu items. Files and folders use
+`MAXINE Studio` or `maxine-studio`, so don't put it in `productName` or `package.json`.
+Never override `CFBundleName` either: Electron looks for `<CFBundleName> Helper.app` at
+startup, so a name that differs from `productName` crashes the packaged app with
+"Unable to find helper app". The bold macOS menu title therefore has no "!".
 
 ```bash
 npm run dev            # needs python3 with Pillow, numpy, fontTools
 npm run typecheck
 npm run test:headless  # build, then run scripts/headless/smoke.json with no window
 npm run dist:mac | dist:win | dist:linux | release     # unsigned installers
-npm run dist:mac-signed | dist:win-signed | release-signed
 ```
 
 - `src/main/` — `index.ts` (window), `ipc.ts` (all handlers; the temp folder and
@@ -202,7 +223,7 @@ npm run dist:mac-signed | dist:win-signed | release-signed
 - `src/renderer/src/` — React + CSS Modules. `App.tsx` owns settings, the log and
   the converted-font list; `components/ConvertTab` and `components/UploadTab`
   stay mounted, so switching tabs keeps their state. Tokens mirror Luminary's.
-- Converted fonts go to `<system temp>/MAXINE Font Studio/`. The renderer passes
+- Converted fonts go to `<system temp>/MAXINE Studio/`. The renderer passes
   bare `.NNNN` names, never paths, and `tempFile()` in `ipc.ts` validates them.
   Dotfiles are hidden in Finder, so Export uses a folder picker (NSSavePanel
   refuses dot names).
@@ -211,23 +232,39 @@ npm run dist:mac-signed | dist:win-signed | release-signed
   `resources/requirements-prod.txt` vendored in by
   `scripts/vendor-python-packages.mjs`. One Mac can build all three platforms.
   The interpreter runs with `-I` and `pycache_prefix` under userData, so no
-  `.pyc` lands inside a signed bundle.
+  `.pyc` lands in the install folder.
+- Previews: `ttf2maxine.source_sheet` draws the source outlines with the converter's
+  metrics, live as settings change (`source_preview`). A conversion writes `.NNNN.png`
+  (decoded file) and `.NNNN.source.png` (same layout, driven by the file), both using
+  `SPECIMEN`, the hardware test string, so the two line up and match a CRT photo.
+  The edge layer only appears after converting.
+- Not every font keeps its letters in Unicode. `font_cmap` falls back to the Mac Roman
+  and Microsoft Symbol tables, which is how Wingdings and Hoefler Text Ornaments reach
+  the ASCII keys (`Rasterizer.draw_char` applies the 0xF0xx offset). A font with no
+  ASCII at all previews its own characters, and `convert()` refuses it instead of
+  writing a file with only underline tiles. About 150 macOS fonts (Kohinoor Gujarati,
+  Al Bayan) have digits and punctuation but no Latin letters, because the OS falls
+  back to another font for Latin. They preview their own script and convert only what
+  ASCII they have: the MAXINE is typed from ASCII keys, and mapping another script onto
+  those keys isn't built.
+- UI type follows Luminary: same stack and sizes at 100%, uppercase only on section
+  titles, sentence-case labels, values in mono. `--font-scale` in `tokens.css` sets the
+  overall size (1.2 here) and also drives field columns and row heights.
+- The Upload tab groups converted fonts by master id and display name (`groupFonts`), not
+  id alone, because fonts left on the default `9000` would otherwise all land in one group.
 - Fonts are dotfiles, so `ftp_list_entries` tries `LIST -a`, then `LIST`, then
   `NLST`. `ftp_delete` refuses anything but `.9xxx`, so the originals on the unit
   can't be removed from the app. Nothing here has been tried on the real unit.
 
-**This repo is public.** Signing identity (`CSC_NAME`), notarization credentials
-and `MINIO_ENDPOINT` come from `.env` (gitignored) or repo secrets, never from a
-committed file. `electron-builder.yml` is an allowlist, so `.env` can't be packaged.
-`dist:win-signed` needs a self-hosted runner labeled `chryon` and these repo
-secrets: the `AZURE_*` set in `electron-builder.win-signed.js` and `MINIO_*`.
+**This repo is public**, and builds are unsigned. `.env` is gitignored and unused by
+the build. `electron-builder.yml` is an allowlist, so it can't be packaged.
 
 Verify in the running app with the headless driver, not `npm run dev`: it uses a
 throwaway profile and temp folder and answers message boxes with button 0, which
 is the confirming action everywhere in this app. Steps are JSON, see
 `scripts/headless/driver.mjs`; within one step, actions run in the order `drop`,
 `fill`, `click`, `select`, `wait`, `eval`/`expect`, `shot`. `launch({ binary })`
-drives a packaged app, with a visible window.
+drives a packaged app, with a visible window and the real temp folder.
 
 ## Open questions (need hardware)
 
@@ -260,5 +297,5 @@ drives a packaged app, with a visible window.
   `tools/ttf2maxine.py`; generated `experiments/.9100`–`.9103` for hardware
   testing.
 - 2026-10-31 (Opus): replaced the local web GUI with an Electron app (two tabs,
-  fonts saved to a temp folder, signed builds for mac/win/linux) on the same
-  stack as Luminary/SuperGroup.
+  fonts saved to a temp folder, unsigned builds for mac/win/linux) on the same
+  stack as Luminary/SuperGroup. Added a source preview and side-by-side compare.

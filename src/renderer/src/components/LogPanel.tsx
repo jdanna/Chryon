@@ -1,8 +1,18 @@
-import { useEffect, useRef, useState } from 'react'
+import { MouseEvent, useEffect, useRef, useState } from 'react'
 import ui from './ui.module.css'
 import styles from './LogPanel.module.css'
 
 export type LogKind = 'info' | 'ok' | 'error'
+
+const OPEN_KEY = 'log-open'
+
+function loadOpen(): boolean {
+  try {
+    return localStorage.getItem(OPEN_KEY) !== 'false'
+  } catch {
+    return true
+  }
+}
 
 export interface LogEntry {
   id: number
@@ -11,7 +21,7 @@ export interface LogEntry {
 }
 
 export default function LogPanel({ entries, onClear }: { entries: LogEntry[]; onClear(): void }): JSX.Element {
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(loadOpen)
   const body = useRef<HTMLDivElement>(null)
   const last = entries[entries.length - 1]
 
@@ -19,19 +29,34 @@ export default function LogPanel({ entries, onClear }: { entries: LogEntry[]; on
     if (body.current) body.current.scrollTop = body.current.scrollHeight
   }, [entries, open])
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(OPEN_KEY, String(open))
+    } catch {
+      // only a convenience, so it's fine if this doesn't persist
+    }
+  }, [open])
+
+  const clear = (e: MouseEvent): void => {
+    e.stopPropagation()
+    onClear()
+  }
+
   return (
     <section className={styles.panel}>
-      <div className={ui.sectionHeader}>
-        <button className={styles.toggle} onClick={() => setOpen(!open)}>
-          {open ? '▾' : '▸'} Log
-        </button>
+      <div className={`${ui.sectionHeader} ${styles.header}`} onClick={() => setOpen(!open)}>
+        <span className={styles.chevron}>{open ? '▾' : '▸'}</span>
+        Log
         {!open && last && <span className={`${ui.sectionMeta} ${styles[last.kind]}`}>{last.text}</span>}
         <span className={ui.spacer} />
         {open && entries.length > 0 && (
-          <button className={ui.btnSmall} onClick={onClear}>
+          <button className={ui.btnSmall} onClick={clear}>
             Clear
           </button>
         )}
+        <button className={ui.btnSmall} aria-expanded={open}>
+          {open ? 'Hide' : 'Show'}
+        </button>
       </div>
       {open && (
         <div className={styles.body} ref={body}>

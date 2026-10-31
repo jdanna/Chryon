@@ -37,7 +37,7 @@
 }
 
 .dropLabel {
-  font-size: var(--font-size-xl);
+  font-size: var(--font-size-2xl);
   font-weight: 600;
   color: var(--color-accent);
   letter-spacing: 0.04em;

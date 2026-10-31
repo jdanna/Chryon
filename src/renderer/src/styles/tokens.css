@@ -26,7 +26,8 @@
   --color-field-focus: #4a9eff;
   --color-well: #141414;
 
-  --topbar-height: 44px;
+  --topbar-height: calc(44px * var(--font-scale));
+  --section-height: calc(30px * var(--font-scale));
 
   --space-1: 4px;
   --space-2: 8px;
@@ -35,11 +36,15 @@
   --space-5: 20px;
 
   --font-mono: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
-  --font-size-xs: 10px;
-  --font-size-sm: 11px;
-  --font-size-md: 13px;
-  --font-size-lg: 15px;
-  --font-size-xl: 18px;
+  /* Luminary's sizes at 100%. This app runs at 120%: raise or lower it here and
+     text, field columns and row heights follow together. */
+  --font-scale: 1.2;
+  --font-size-xs: calc(10px * var(--font-scale));
+  --font-size-sm: calc(11px * var(--font-scale));
+  --font-size-md: calc(13px * var(--font-scale));
+  --font-size-lg: calc(15px * var(--font-scale));
+  --font-size-xl: calc(18px * var(--font-scale));
+  --font-size-2xl: calc(22px * var(--font-scale));
 
   --radius-sm: 3px;
   --radius-md: 5px;

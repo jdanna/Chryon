@@ -1,6 +1,6 @@
 afterPack: build/afterPackHook.js
-appId: com.retrograde.maxinefontstudio
-productName: MAXINE Font Studio
+appId: com.retrograde.maxinestudio
+productName: MAXINE Studio
 directories:
   buildResources: resources
 files:
@@ -13,7 +13,7 @@ extraResources:
       - "*.py"
       - footer_template.bin
 win:
-  executableName: MaxineFontStudio
+  executableName: MaxineStudio
   extraResources:
     - from: resources/python/win32-x64/python
       to: python
@@ -29,7 +29,6 @@ nsis:
 mac:
   category: public.app-category.utilities
   identity: null
-  entitlementsInherit: build/entitlements.mac.plist
   extraResources:
     - from: resources/python/darwin-${arch}/python
       to: python
@@ -41,7 +40,7 @@ mac:
 dmg:
   artifactName: ${name}-${version}-${arch}.${ext}
 linux:
-  executableName: maxine-font-studio
+  executableName: maxine-studio
   category: Utility
   icon: resources/icon.png
   artifactName: ${name}-${version}-${arch}.${ext}

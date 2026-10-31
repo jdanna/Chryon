@@ -1,12 +1,23 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { ConvertSettings, EdgeStyle, FontInfo, FontSource, SystemFont } from '@shared/types'
+import type { ConvertSettings, EdgeStyle, FontInfo, FontSource, SourcePreview, SystemFont } from '@shared/types'
 import { errorMessage, formatSize } from '../format'
-import FontPreview from './FontPreview'
+import { ComparePreview, PreviewWell } from './FontPreview'
 import type { LogKind } from './LogPanel'
 import ui from './ui.module.css'
 import styles from './ConvertTab.module.css'
 
 const api = window.maxine
+const PREVIEW_DELAY_MS = 200
+const ASCII_CHARACTERS = 94
+const LETTERS = 52
+// The originals' range. Their series run up to 14 sizes, mostly 4 scanlines apart.
+const ORIGINAL_MIN_SCANLINES = 22
+const ORIGINAL_MAX_SCANLINES = 100
+const MAX_EACH_SIDE = 15
+const MIN_SCANLINES = 10
+const MAX_SCANLINES = 200
+
+type View = 'source' | 'compare'
 
 interface Props {
   settings: ConvertSettings
@@ -30,6 +41,9 @@ export default function ConvertTab(props: Props): JSX.Element {
   const [name, setName] = useState('')
   const [nameEdited, setNameEdited] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [view, setView] = useState<View>('compare')
+  const [sourcePreview, setSourcePreview] = useState<SourcePreview | null>(null)
+  const [sourceError, setSourceError] = useState('')
 
   const set = <K extends keyof ConvertSettings>(key: K, value: ConvertSettings[K]): void => onSettings({ ...settings, [key]: value })
 
@@ -50,6 +64,34 @@ export default function ConvertTab(props: Props): JSX.Element {
     if (!nameEdited) setName(source?.name ?? '')
   }, [source, nameEdited])
 
+  // Everything that changes how the source lays out, as one value for the effect below
+  const previewKey = source
+    ? JSON.stringify([source.path, source.index, settings.scanlines, settings.aspect, settings.spacing, settings.kern, settings.edge, settings.lines])
+    : ''
+
+  // Picking a font or changing its layout goes back to the live preview until the next convert
+  useEffect(() => {
+    if (!source) return
+    let stale = false
+    setView('source')
+    setSourceError('')
+    const { scanlines, aspect, spacing, kern, edge, lines } = settings
+    const timer = setTimeout(() => {
+      api.sourcePreview({ ttf: source.path, index: source.index, scanlines, aspect, spacing, kern, edge, lines }).then(
+        (preview) => !stale && setSourcePreview(preview),
+        (err) => {
+          if (stale) return
+          setSourcePreview(null)
+          setSourceError(errorMessage(err))
+        }
+      )
+    }, PREVIEW_DELAY_MS)
+    return () => {
+      stale = true
+      clearTimeout(timer)
+    }
+  }, [previewKey])
+
   const visible = useMemo(() => {
     const q = search.toLowerCase()
     return (systemFonts ?? []).filter((f) => f.name.toLowerCase().includes(q))
@@ -57,7 +99,28 @@ export default function ConvertTab(props: Props): JSX.Element {
 
   const shown = fonts.find((f) => f.file === current) ?? null
   const codeValid = /^\d{4}$/.test(settings.code)
-  const replaces = fonts.some((f) => f.file === `.${settings.code}`)
+  // Codes rise with size from the first code, like the originals' series
+  const above = Math.max(Math.floor(settings.batchAbove) || 0, 0)
+  const below = Math.max(Math.floor(settings.batchBelow) || 0, 0)
+  const batch = Array.from({ length: below + 1 + above }, (_, i) => ({
+    code: String(Number(settings.code) + i).padStart(4, '0'),
+    scanlines: settings.scanlines + (i - below) * settings.batchStep
+  }))
+  const first = batch[0]
+  const last = batch[batch.length - 1]
+  const isBatch = batch.length > 1
+  const batchValid =
+    above <= MAX_EACH_SIDE &&
+    below <= MAX_EACH_SIDE &&
+    first.scanlines >= MIN_SCANLINES &&
+    last.scanlines <= MAX_SCANLINES &&
+    Number(last.code) <= 9999 &&
+    (!isBatch || settings.batchStep >= 1)
+  const outsideOriginals = first.scanlines < ORIGINAL_MIN_SCANLINES || last.scanlines > ORIGINAL_MAX_SCANLINES
+  const replaced = batch.filter(({ code }) => fonts.some((f) => f.file === `.${code}`)).map(({ code }) => `.${code}`)
+  const ascii = sourcePreview?.ascii ?? null
+  const letters = sourcePreview?.letters ?? null
+  const convertible = !!source && codeValid && batchValid && !sourceError && ascii !== 0
 
   const pick = async (): Promise<void> => {
     const path = await api.pickFont()
@@ -67,16 +130,19 @@ export default function ConvertTab(props: Props): JSX.Element {
   const convert = async (): Promise<void> => {
     if (!source) return
     setBusy(true)
-    setStatus('Converting…')
     try {
-      const { font, log: lines } = await api.convert({ ...settings, ttf: source.path, index: source.index, name })
-      lines.forEach((line) => log(line))
-      log(`Converted ${font.file} (${formatSize(font.size)})`, 'ok')
-      await refreshFonts()
-      onCurrent(font.file)
+      for (const [i, { code, scanlines }] of batch.entries()) {
+        setStatus(isBatch ? `Converting ${i + 1} of ${batch.length}…` : 'Converting…')
+        const { font, log: lines } = await api.convert({ ...settings, code, scanlines, ttf: source.path, index: source.index, name })
+        lines.forEach((line) => log(line))
+        log(`Converted ${font.file} (${scanlines} scanlines, ${formatSize(font.size)})`, 'ok')
+        await refreshFonts()
+        onCurrent(font.file)
+        setView('compare')
+      }
       setStatus('Converted, not yet tested on hardware')
     } catch (err) {
-      log(`Conversion failed: ${errorMessage(err)}`, 'error')
+      log(`Conversion failed, stopped: ${errorMessage(err)}`, 'error')
       setStatus('Conversion failed')
     }
     setBusy(false)
@@ -124,12 +190,23 @@ export default function ConvertTab(props: Props): JSX.Element {
       <main className={styles.preview}>
         <div className={ui.sectionHeader}>
           Preview
-          {shown && (
+          {view === 'source' && source && (
+            <span className={ui.sectionMeta}>
+              {source.name} · {letters === 0 ? 'no Latin letters, showing its own script' : `${settings.scanlines} scanlines · not converted yet`}
+            </span>
+          )}
+          {view === 'compare' && shown && (
             <span className={ui.sectionMeta}>
               <span className={ui.mono}>{shown.file}</span> · {shown.name} · {shown.desc}
             </span>
           )}
           <span className={ui.spacer} />
+          <button className={view === 'source' ? ui.tabActive : ui.tab} disabled={!source} onClick={() => setView('source')}>
+            Source
+          </button>
+          <button className={view === 'compare' ? ui.tabActive : ui.tab} disabled={!shown} onClick={() => setView('compare')}>
+            Side by side
+          </button>
           <button className={ui.btnSmall} disabled={!shown} onClick={exportFont}>
             Export…
           </button>
@@ -137,22 +214,28 @@ export default function ConvertTab(props: Props): JSX.Element {
             Upload →
           </button>
         </div>
-        <FontPreview font={shown} empty="Convert a font to see what the MAXINE should display. Face in white, border and shadow in red." />
-        <div className={styles.stats}>
-          <Stat label="Glyphs" value={shown?.glyphs} />
-          <Stat label="Kern pairs" value={shown?.kern} />
-          <Stat label="Cell rows" value={shown?.cell_rows} />
-          <Stat label="Ascent" value={shown?.ascent} />
-          <Stat label="Descent" value={shown?.descent} />
-          <Stat label="Baseline" value={shown?.baseline_row} />
-          <Stat label="Size" value={shown ? formatSize(shown.size) : undefined} />
-        </div>
+        {view === 'source' ? (
+          <PreviewWell image={sourcePreview?.image ?? null} empty={sourceError || 'Rendering preview…'} />
+        ) : (
+          <ComparePreview font={shown} empty="Choose a font to preview it." />
+        )}
+        {view === 'compare' && shown && (
+          <div className={styles.stats}>
+            <Stat label="Glyphs" value={shown.glyphs} />
+            <Stat label="Kern pairs" value={shown.kern} />
+            <Stat label="Cell rows" value={shown.cell_rows} />
+            <Stat label="Ascent" value={shown.ascent} />
+            <Stat label="Descent" value={shown.descent} />
+            <Stat label="Baseline" value={shown.baseline_row} />
+            <Stat label="Size" value={formatSize(shown.size)} />
+          </div>
+        )}
       </main>
 
       <aside className={styles.inspector}>
         <div className={ui.sectionHeader}>Output</div>
         <div className={ui.fields}>
-          <label className={`${ui.field} ${ui.fieldWide}`} title="Shown in the MAXINE font browser">
+          <label className={ui.field} title="Shown in the MAXINE! font browser">
             Display name
             <input
               type="text"
@@ -165,7 +248,7 @@ export default function ConvertTab(props: Props): JSX.Element {
             />
           </label>
           {source?.faces && source.faces.length > 1 && (
-            <label className={`${ui.field} ${ui.fieldWide}`}>
+            <label className={ui.field}>
               Face
               <select
                 value={source.index}
@@ -189,8 +272,30 @@ export default function ConvertTab(props: Props): JSX.Element {
           </label>
         </div>
 
+        <div className={ui.sectionHeader}>Batch sizes</div>
+        <div className={ui.fields}>
+          <label className={ui.field} title="Extra fonts larger than the Scanlines size">
+            Sizes above
+            <input type="number" min={0} max={MAX_EACH_SIDE} value={settings.batchAbove} onChange={(e) => set('batchAbove', Number(e.target.value))} />
+          </label>
+          <label className={ui.field} title="Extra fonts smaller than the Scanlines size">
+            Sizes below
+            <input type="number" min={0} max={MAX_EACH_SIDE} value={settings.batchBelow} onChange={(e) => set('batchBelow', Number(e.target.value))} />
+          </label>
+          <label className={ui.field} title="Scanlines added per font. The originals mostly step by 4.">
+            Size step
+            <input
+              type="number"
+              min={1}
+              disabled={!isBatch}
+              value={settings.batchStep}
+              onChange={(e) => set('batchStep', Number(e.target.value))}
+            />
+          </label>
+        </div>
+
         <div className={ui.sectionHeader}>Edge</div>
-        <div className={`${ui.fields} ${styles.edgeFields}`}>
+        <div className={ui.fields}>
           <label className={ui.field}>
             Style
             <select value={settings.edge} onChange={(e) => set('edge', e.target.value as EdgeStyle)}>
@@ -212,7 +317,7 @@ export default function ConvertTab(props: Props): JSX.Element {
           </label>
         </div>
 
-        <div className={ui.sectionHeader}>Spacing</div>
+        <div className={ui.sectionHeader}>Metrics</div>
         <div className={ui.fields}>
           <label className={ui.field} title="Horizontal pixels per row. 1.17 was measured from Swiss 721 Bold.">
             Pixel aspect
@@ -233,15 +338,45 @@ export default function ConvertTab(props: Props): JSX.Element {
         </div>
 
         <div className={styles.convertBar}>
+          {ascii === 0 && (
+            <div className={`${ui.hint} ${ui.hintWarn}`}>This font has no ASCII characters, so there is nothing to type on the MAXINE!</div>
+          )}
+          {ascii !== null && ascii > 0 && letters === 0 && (
+            <div className={`${ui.hint} ${ui.hintWarn}`}>
+              This font has no Latin letters. Only its {ascii} digits and symbols can be typed on the MAXINE!
+            </div>
+          )}
+          {ascii !== null && letters !== null && letters > 0 && ascii < ASCII_CHARACTERS && (
+            <div className={ui.hint}>
+              This font has {ascii} of the {ASCII_CHARACTERS} ASCII characters{letters < LETTERS ? `, ${letters} of them letters` : ''}. The rest won't
+              exist on the MAXINE!
+            </div>
+          )}
           {!codeValid && <div className={`${ui.hint} ${ui.hintWarn}`}>The font code must be exactly 4 digits.</div>}
           {codeValid && !settings.code.startsWith('9') && (
             <div className={`${ui.hint} ${ui.hintWarn}`}>Real fonts use codes below 9000. Stick to 9xxx so nothing collides on the unit.</div>
           )}
-          {codeValid && settings.code.startsWith('9') && replaces && (
-            <div className={ui.hint}>Replaces the existing .{settings.code} in the temp folder.</div>
+          {codeValid && !batchValid && (
+            <div className={`${ui.hint} ${ui.hintWarn}`}>
+              A batch needs a step of at least 1, up to {MAX_EACH_SIDE} sizes above and below, {MIN_SCANLINES} to {MAX_SCANLINES} scanlines, and codes up
+              to 9999.
+            </div>
           )}
-          <button className={`${ui.btnPrimary} ${styles.convertButton}`} disabled={!source || !codeValid || busy} onClick={convert}>
-            {busy ? 'Converting…' : `Convert to .${settings.code}`}
+          {codeValid && batchValid && isBatch && (
+            <div className={ui.hint}>
+              .{first.code}–.{last.code}: {batch.map((b) => b.scanlines).join(', ')} scanlines, all master id {settings.masterId}.
+            </div>
+          )}
+          {codeValid && batchValid && isBatch && outsideOriginals && (
+            <div className={`${ui.hint} ${ui.hintWarn}`}>
+              The originals run from {ORIGINAL_MIN_SCANLINES} to {ORIGINAL_MAX_SCANLINES} scanlines.
+            </div>
+          )}
+          {codeValid && settings.code.startsWith('9') && replaced.length > 0 && (
+            <div className={ui.hint}>Replaces the existing {replaced.join(', ')} in the temp folder.</div>
+          )}
+          <button className={`${ui.btnPrimary} ${styles.convertButton}`} disabled={!convertible || busy} onClick={convert}>
+            {busy ? 'Converting…' : isBatch ? `Convert ${batch.length} sizes` : `Convert to .${settings.code}`}
           </button>
         </div>
       </aside>

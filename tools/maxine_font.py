@@ -314,12 +314,18 @@ def set_thumbnail(footer: bytes, img_rows: List[List[int]]) -> bytes:
 LINES = ["ABCDEFGHIJKLM", "NOPQRSTUVWXYZ", "abcdefghijklm", "nopqrstuvwxyz",
          "1234567890", "!$%'&*(),-./:;<>?@#+=[]{}|~\"\\^_`"]
 
+def sheet_size(font: MaxineFont, lines=LINES) -> Tuple[int, int]:
+    """(line height, width) of a specimen sheet; ttf2maxine.source_sheet lays out to the same size."""
+    LH = max((g.top + len(g.rows) for g in font.glyphs.values()), default=10) + 4
+    width = max(sum(font.glyphs[ord(ch)].advance for ch in line if ord(ch) in font.glyphs) for line in lines) + 40
+    return LH, width
+
+
 def render_sheet(font: MaxineFont, out_png: str, scale: int = 3, lines=LINES, kern=True):
     from PIL import Image
     kmap = {(a, b): k for a, b, k in font.kerning}
     rasters = {c: g.raster() for c, g in font.glyphs.items()}
-    LH = max((g.top + len(g.rows) for g in font.glyphs.values()), default=10) + 4
-    width = max(sum(font.glyphs[ord(ch)].advance for ch in line if ord(ch) in font.glyphs) for line in lines) + 40
+    LH, width = sheet_size(font, lines)
     img = Image.new("RGB", (width, LH * len(lines) + 10), (30, 30, 30)); px = img.load()
     for li, line in enumerate(lines):
         x0 = 10; prev = None

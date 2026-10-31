@@ -10,6 +10,34 @@ const api = window.maxine
 const FONT_NAME = /^\.\d{4}$/
 const TEST_FONT = /^\.9\d{3}$/
 
+interface FontGroup {
+  key: string
+  master: string
+  name: string
+  fonts: FontInfo[]
+}
+
+/** Groups by master id and name, since fonts left on the default id share it whatever
+ *  their typeface. Newest group first, and smallest code first inside a group. */
+function groupFonts(fonts: FontInfo[]): FontGroup[] {
+  const groups = new Map<string, FontGroup>()
+  for (const f of fonts) {
+    const master = f.master ?? '????'
+    const key = `${master}|${f.name}`
+    if (!groups.has(key)) groups.set(key, { key, master, name: f.name, fonts: [] })
+    groups.get(key)!.fonts.push(f)
+  }
+  for (const group of groups.values()) group.fonts.sort((a, b) => a.file.localeCompare(b.file))
+  return [...groups.values()]
+}
+
+function groupSummary({ fonts }: FontGroup): string {
+  if (fonts.length === 1) return fonts[0].desc
+  const sizes = fonts.flatMap((f) => /(\d+) scanlines/.exec(f.desc)?.[1] ?? []).map(Number)
+  const range = sizes.length ? ` · ${Math.min(...sizes)}–${Math.max(...sizes)} scanlines` : ''
+  return `${fonts.length} variants${range}`
+}
+
 interface Props {
   settings: FtpSettings
   onSettings(settings: FtpSettings): void
@@ -29,6 +57,7 @@ export default function UploadTab(props: Props): JSX.Element {
   const [selected, setSelected] = useState<string[]>([])
   const [progress, setProgress] = useState<UploadProgress | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [expanded, setExpanded] = useState<string[]>([])
 
   const set = <K extends keyof FtpSettings>(key: K, value: FtpSettings[K]): void => onSettings({ ...settings, [key]: value })
   const { remember: _remember, ...cfg } = settings
@@ -41,6 +70,8 @@ export default function UploadTab(props: Props): JSX.Element {
   // With nothing ticked, the highlighted font is the one to send
   const ticked = selected.filter((file) => fonts.some((f) => f.file === file))
   const toUpload = ticked.length ? ticked : shown ? [shown.file] : []
+  const allTicked = fonts.length > 0 && ticked.length === fonts.length
+  const groups = useMemo(() => groupFonts(fonts), [fonts])
 
   const list = async (): Promise<FtpListing | null> => {
     setConnecting(true)
@@ -97,10 +128,34 @@ export default function UploadTab(props: Props): JSX.Element {
     }
   }
 
+  const tick = (files: string[], on: boolean): void => {
+    setSelected((s) => (on ? [...new Set([...s, ...files])] : s.filter((f) => !files.includes(f))))
+  }
+
+  const toggleGroup = (group: FontGroup): void => {
+    setExpanded((keys) => (keys.includes(group.key) ? keys.filter((k) => k !== group.key) : [...keys, group.key]))
+    if (!group.fonts.some((f) => f.file === current)) onCurrent(group.fonts[0].file)
+  }
+
+  const afterDelete = async (files: string[]): Promise<void> => {
+    setSelected((s) => s.filter((f) => !files.includes(f)))
+    const remaining = await refreshFonts()
+    if (current && files.includes(current)) onCurrent(remaining[0]?.file ?? '')
+  }
+
   const deleteLocal = async (file: string): Promise<void> => {
     await api.deleteFont(file)
-    setSelected((s) => s.filter((f) => f !== file))
-    await refreshFonts()
+    await afterDelete([file])
+  }
+
+  const deleteTicked = async (): Promise<void> => {
+    try {
+      if (!(await api.deleteFonts(ticked))) return
+      log(`Deleted ${ticked.join(', ')} from the temp folder`, 'ok')
+      await afterDelete(ticked)
+    } catch (err) {
+      log(`Delete failed: ${errorMessage(err)}`, 'error')
+    }
   }
 
   return (
@@ -108,7 +163,7 @@ export default function UploadTab(props: Props): JSX.Element {
       <aside className={styles.connection}>
         <div className={ui.sectionHeader}>Connection</div>
         <div className={ui.fields}>
-          <label className={`${ui.field} ${ui.fieldWide}`}>
+          <label className={ui.field}>
             Host or IP
             <input type="text" placeholder="192.168.1.50" value={settings.host} onChange={(e) => set('host', e.target.value)} />
           </label>
@@ -120,11 +175,11 @@ export default function UploadTab(props: Props): JSX.Element {
             Port
             <input type="number" value={settings.port} onChange={(e) => set('port', Number(e.target.value))} />
           </label>
-          <label className={`${ui.field} ${ui.fieldWide}`}>
+          <label className={ui.field}>
             Password
             <input type="password" value={settings.password} onChange={(e) => set('password', e.target.value)} />
           </label>
-          <label className={`${ui.field} ${ui.fieldWide}`}>
+          <label className={ui.field}>
             Remote folder
             <input type="text" placeholder="/" value={settings.dir} onChange={(e) => set('dir', e.target.value)} />
           </label>
@@ -158,35 +213,82 @@ export default function UploadTab(props: Props): JSX.Element {
             Open folder
           </button>
         </div>
+        <div className={styles.listBar}>
+          <label className={ui.check}>
+            <TickBox
+              checked={allTicked}
+              partial={ticked.length > 0}
+              disabled={fonts.length === 0}
+              onChange={(on) => setSelected(on ? fonts.map((f) => f.file) : [])}
+            />
+            Select all
+          </label>
+          {ticked.length > 0 && <span className={styles.selectedCount}>{ticked.length} selected</span>}
+          <span className={ui.spacer} />
+          <button className={ui.btnSmall} disabled={ticked.length === 0} onClick={deleteTicked}>
+            Delete selected
+          </button>
+        </div>
         <div className={styles.table}>
           {fonts.length === 0 && <div className={ui.empty}>Nothing converted yet. Fonts from the Convert tab appear here.</div>}
-          {fonts.map((f) => (
-            <div key={f.file} className={f.file === current ? styles.rowActive : styles.row} onClick={() => onCurrent(f.file)}>
-              <input
-                type="checkbox"
-                aria-label={`Select ${f.file}`}
-                checked={selected.includes(f.file)}
-                onClick={(e) => e.stopPropagation()}
-                onChange={(e) => setSelected((s) => (e.target.checked ? [...s, f.file] : s.filter((x) => x !== f.file)))}
-              />
-              <span className={`${ui.mono} ${styles.code}`}>{f.file}</span>
-              <span className={styles.names}>
-                <span className={styles.name}>{f.name}</span>
-                <span className={styles.desc}>{f.desc}</span>
-              </span>
-              <OnUnit font={f} remote={remote.get(f.file)} />
-              <span className={styles.size}>{formatSize(f.size)}</span>
-              <button
-                className={ui.btnSmall}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  deleteLocal(f.file)
-                }}
-              >
-                Delete
-              </button>
-            </div>
-          ))}
+          {groups.map((group) => {
+            const open = expanded.includes(group.key)
+            const files = group.fonts.map((f) => f.file)
+            const tickedHere = files.filter((file) => ticked.includes(file)).length
+            const onUnit = files.filter((file) => remote.has(file)).length
+            const total = group.fonts.reduce((sum, f) => sum + f.size, 0)
+            return (
+              <div key={group.key}>
+                <div className={files.includes(current ?? '') ? styles.groupRowActive : styles.groupRow} onClick={() => toggleGroup(group)}>
+                  <button className={styles.twirl} aria-expanded={open} aria-label={`${open ? 'Hide' : 'Show'} variants of ${group.name}`}>
+                    <svg viewBox="0 0 12 12" aria-hidden="true">
+                      <path d="M3 1 L10.5 6 L3 11 Z" fill="currentColor" />
+                    </svg>
+                  </button>
+                  <span onClick={(e) => e.stopPropagation()} className={styles.tickCell}>
+                    <TickBox
+                      label={`Select all ${group.name}`}
+                      checked={tickedHere === files.length}
+                      partial={tickedHere > 0}
+                      onChange={(on) => tick(files, on)}
+                    />
+                  </span>
+                  <span className={`${ui.mono} ${styles.code}`}>{group.master}</span>
+                  <span className={styles.names}>
+                    <span className={styles.name}>{group.name}</span>
+                    <span className={styles.desc}>{groupSummary(group)}</span>
+                  </span>
+                  {onUnit > 0 && <span className={styles.onUnit}>{onUnit === files.length ? 'On unit' : `${onUnit} of ${files.length} on unit`}</span>}
+                  <span className={styles.size}>{formatSize(total)}</span>
+                </div>
+                {open &&
+                  group.fonts.map((f) => (
+                    <div key={f.file} className={f.file === current ? styles.rowActive : styles.row} onClick={() => onCurrent(f.file)}>
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${f.file}`}
+                        checked={selected.includes(f.file)}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => tick([f.file], e.target.checked)}
+                      />
+                      <span className={`${ui.mono} ${styles.code}`}>{f.file}</span>
+                      <span className={styles.variantDesc}>{f.desc}</span>
+                      <OnUnit font={f} remote={remote.get(f.file)} />
+                      <span className={styles.size}>{formatSize(f.size)}</span>
+                      <button
+                        className={ui.btnSmall}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          deleteLocal(f.file)
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+              </div>
+            )
+          })}
         </div>
         <div className={styles.previewPane}>
           <FontPreview font={shown} empty="Select a font to preview it." />
@@ -210,7 +312,7 @@ export default function UploadTab(props: Props): JSX.Element {
 
       <section className={styles.remote}>
         <div className={ui.sectionHeader}>
-          On the MAXINE
+          On the MAXINE!
           {listing && <span className={ui.sectionMeta}>{listing.cwd}</span>}
         </div>
         <div className={styles.table}>
@@ -234,6 +336,30 @@ export default function UploadTab(props: Props): JSX.Element {
         </div>
       </section>
     </div>
+  )
+}
+
+interface TickBoxProps {
+  checked: boolean
+  partial: boolean
+  disabled?: boolean
+  label?: string
+  onChange(on: boolean): void
+}
+
+/** A checkbox that shows a dash when only some of what it covers is ticked. */
+function TickBox({ checked, partial, disabled, label, onChange }: TickBoxProps): JSX.Element {
+  return (
+    <input
+      type="checkbox"
+      aria-label={label}
+      checked={checked}
+      disabled={disabled}
+      ref={(el) => {
+        if (el) el.indeterminate = partial && !checked
+      }}
+      onChange={() => onChange(!checked)}
+    />
   )
 }
 

@@ -49,7 +49,7 @@ export async function launch({ show = false, keepProfile = false, binary = null 
   const profile = mkdtempSync(join(tmpdir(), 'maxine-headless-'))
 
   // The VS Code extension host sets this, and Electron then runs as plain Node
-  const env = { ...process.env, HEADLESS_TEMP_DIR: profile, TMPDIR: profile }
+  const env = { ...process.env, HEADLESS_TEMP_DIR: profile }
   delete env.ELECTRON_RUN_AS_NODE
 
   // Under plain Node the `electron` package exports the path of the real binary.
@@ -61,7 +61,7 @@ export async function launch({ show = false, keepProfile = false, binary = null 
     `--user-data-dir=${profile}`,
     '--remote-debugging-port=0'
   ]
-  // A packaged app ignores -r, so `binary` runs with a visible window
+  // A packaged app ignores -r, so `binary` runs with a visible window and the real temp folder
   const app = binary
     ? spawn(binary, [`--user-data-dir=${profile}`, '--remote-debugging-port=0'], { env, stdio: ['ignore', 'pipe', 'pipe'] })
     : spawn(electron, args, { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] })

@@ -1,15 +1,38 @@
+.pane {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.label {
+  flex-shrink: 0;
+  padding: var(--space-2) var(--space-3) 0;
+  background: #1e1e1e;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-label);
+}
+
 .well {
   flex: 1;
   min-height: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-3);
+  padding: var(--space-2) var(--space-3);
   background: #1e1e1e; /* matches render_sheet's background, so the image has no visible edge */
 }
 
+/* Fills the well, so two sheets of the same size always display at the same scale */
 .image {
-  max-width: 100%;
-  max-height: 100%;
+  display: block;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
+}
+
+.compare {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 1px;
+  background: var(--color-border-subtle);
 }

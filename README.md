@@ -43,6 +43,8 @@ pick an installed font or drop a TTF/OTF/TTC, set size and edge style,
 convert, see a preview rendered from the finished file, and upload it to the
 MAXINE over FTP (passive or active mode). Settings are kept in the browser.
 
+![MAXINE Font Studio](docs/studio.png)
+
 ```sh
 # inspect an original font
 python3 tools/maxine_font.py info fonts/.0000

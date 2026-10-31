@@ -62,6 +62,8 @@ def system_fonts():
                     continue
                 seen.add(p)
                 for i, n in enumerate(face_names(p)):
+                    if n.startswith("."):      # macOS internal/hidden faces
+                        continue
                     out.append({"path": p, "index": i, "name": n})
         out.sort(key=lambda f: f["name"].lower())
         _font_cache = out
@@ -74,9 +76,10 @@ def list_outputs(out_dir):
         try:
             f = mx.load(p)
             res.append({"path": p, "file": os.path.basename(p), "name": f.name, "desc": (f.desc1 + " " + f.desc2).strip(),
-                        "size": os.path.getsize(p), "preview": os.path.exists(p + ".png")})
+                        "size": os.path.getsize(p), "preview": os.path.exists(p + ".png"), "mtime": os.path.getmtime(p)})
         except Exception:
-            res.append({"path": p, "file": os.path.basename(p), "name": "?", "desc": "unreadable", "size": os.path.getsize(p), "preview": False})
+            res.append({"path": p, "file": os.path.basename(p), "name": "?", "desc": "unreadable", "size": os.path.getsize(p), "preview": False, "mtime": os.path.getmtime(p)})
+    res.sort(key=lambda f: -f["mtime"])
     return res
 
 
@@ -376,8 +379,11 @@ async function ftpUpload(path){saveSettings();const name=path.split('/').pop();i
  busy(true,$('ftp_upload'),'Uploading…');try{const j=await api('POST','/api/ftp/upload',Object.assign(ftpCfg(),{path}));log('Uploaded '+j.remote_name+' ('+j.local_size+' bytes'+(j.remote_size!=null?', remote reports '+j.remote_size:'')+')','ok');status('Uploaded '+j.remote_name+' — now load it on the unit and photograph the CRT')}catch(e){log('Upload failed: '+e.message,'err');status('FTP error')}busy(false,$('ftp_upload'))}
 $('ftp_upload').onclick=()=>{if(S.last)ftpUpload(S.last.path)};
 // ---- outputs table
-async function refreshFiles(){try{const j=await api('GET','/api/outputs');if(!$('out').value)$('out').value=j.out;const tb=$('files').querySelector('tbody');tb.innerHTML='';for(const f of j.files){const tr=document.createElement('tr');tr.innerHTML=`<td><b>${f.file}</b></td><td>${f.name}</td><td>${f.desc}</td><td>${(f.size/1024).toFixed(1)} KB</td><td></td>`;const td=tr.lastChild;
-  if(f.preview){const b=document.createElement('button');b.className='secondary';b.textContent='Preview';b.onclick=()=>{$('preview').innerHTML='<img src="/api/preview?path='+encodeURIComponent(f.path+'.png')+'&t='+Date.now()+'">';S.last={path:f.path,png:f.path+'.png'};$('ftp_upload').disabled=false;$('download').disabled=false;$('openpng').disabled=false};td.appendChild(b)}
+function showFile(f){$('preview').innerHTML='<img src="/api/preview?path='+encodeURIComponent(f.path+'.png')+'&t='+Date.now()+'">';S.last={path:f.path,png:f.path+'.png'};$('ftp_upload').disabled=false;$('download').disabled=false;$('openpng').disabled=false;$('stats').innerHTML=`<span><b>${f.file}</b></span><span>${f.name}</span><span>${f.desc}</span><span>${(f.size/1024).toFixed(1)} KB</span>`}
+async function refreshFiles(){try{const j=await api('GET','/api/outputs');if(!$('out').value)$('out').value=j.out;const tb=$('files').querySelector('tbody');tb.innerHTML='';
+ if(!S.last){const newest=j.files.filter(f=>f.preview).sort((a,b)=>b.mtime-a.mtime)[0];if(newest)showFile(newest)}
+ for(const f of j.files){const tr=document.createElement('tr');tr.innerHTML=`<td><b>${f.file}</b></td><td>${f.name}</td><td>${f.desc}</td><td>${(f.size/1024).toFixed(1)} KB</td><td></td>`;const td=tr.lastChild;
+  if(f.preview){const b=document.createElement('button');b.className='secondary';b.textContent='Preview';b.onclick=()=>showFile(f);td.appendChild(b)}
   const u=document.createElement('button');u.textContent='Upload';u.style.marginLeft='6px';u.onclick=()=>ftpUpload(f.path);td.appendChild(u);tb.appendChild(tr)}}catch(e){log('Could not list outputs: '+e.message,'err')}}
 // ---- init
 loadSettings();$('outname').textContent='.'+$('code').value;

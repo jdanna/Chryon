@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from 'fs'
 import { join } from 'path'
-import type { ConvertRequest, FontInfo, FtpConfig, Settings, SourcePreview, SourcePreviewRequest, UploadedFile, UploadProgress } from '@shared/types'
+import type { ConvertRequest, FontInfo, FtpConfig, FtpListing, Settings, SourcePreview, SourcePreviewRequest, UploadProgress, UploadResult } from '@shared/types'
 import { Bridge } from './bridge'
 import { loadSettings, saveSettings } from './settings'
 
@@ -107,7 +107,7 @@ export function registerIpc(win: BrowserWindow): Bridge {
       defaultId: originals.length ? 1 : 0,
       cancelId: 1
     })
-    return response === 0 ? bridge.call<UploadedFile[]>('ftp_upload', { ...cfg, paths }) : null
+    return response === 0 ? bridge.call<UploadResult>('ftp_upload', { ...cfg, paths }) : null
   })
   ipcMain.handle('ftp:delete', async (_, cfg: FtpConfig, name: string) => {
     const { response } = await dialog.showMessageBox(win, {
@@ -118,10 +118,9 @@ export function registerIpc(win: BrowserWindow): Bridge {
       defaultId: 1,
       cancelId: 1
     })
-    if (response !== 0) return false
-    await bridge.call('ftp_delete', { ...cfg, name })
-    return true
+    return response === 0 ? bridge.call<FtpListing>('ftp_delete', { ...cfg, name }) : null
   })
+  ipcMain.handle('ftp:disconnect', () => bridge.call('ftp_disconnect'))
 
   ipcMain.handle('settings:load', () => loadSettings())
   ipcMain.handle('settings:save', (_, settings: Settings) => saveSettings(settings))

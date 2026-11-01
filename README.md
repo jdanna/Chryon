@@ -5,9 +5,11 @@ broadcast character generator, so these systems can keep working with new typefa
 
 Pick a font, see how it will look, convert it, and send it to the unit.
 
-> **Not tested on real hardware yet.** The app reads and rewrites all 36 original
-> MAXINE! fonts correctly, but no font it has converted has been loaded on a real
-> unit. Load one font at a time, and stop if the unit fails to load it, hangs or crashes.
+Here's Comic Sans, converted with this app, running on a real unit:
+
+![Comic Sans on a Sony CRT, with the MAXINE! control screen beside it](docs/maxine-crt.jpg)
+
+<img src="docs/maxine-font-load.jpg" alt="Comic Sans MS listed in the MAXINE! Font Load Utility" width="480">
 
 ## Preview a font
 

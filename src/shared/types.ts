@@ -73,25 +73,18 @@ export interface ConvertResult {
 export interface FtpConfig {
   host: string
   port: number
-  user: string
-  password: string
-  dir: string
-  passive: boolean
-}
-
-export interface FtpSettings extends FtpConfig {
-  remember: boolean
+  /** Seconds between files in a batch. The unit locks up when data connections come too fast. */
+  pause: number
 }
 
 export interface Settings {
   convert: ConvertSettings
-  ftp: FtpSettings
+  ftp: FtpConfig
 }
 
 export interface RemoteEntry {
   name: string
-  size: number | null
-  date: string
+  size: number
   dir: boolean
 }
 
@@ -103,8 +96,13 @@ export interface FtpListing {
 
 export interface UploadedFile {
   name: string
-  local_size: number
-  remote_size: number | null
+  size: number
+}
+
+/** Every write comes back with the unit's listing, so the tab never reconnects to refresh. */
+export interface UploadResult {
+  done: UploadedFile[]
+  listing: FtpListing
 }
 
 export interface UploadProgress {
@@ -112,6 +110,8 @@ export interface UploadProgress {
   name: string
   sent: number
   total: number
+  /** Set while pausing after `name`: seconds until the next connection */
+  wait?: number
 }
 
 /** Exposed to the renderer as window.maxine. File arguments are bare `.NNNN` names. */
@@ -132,10 +132,13 @@ export interface MaxineApi {
   /** Asks for confirmation in a native dialog. Resolves to false if declined. */
   deleteFonts(files: string[]): Promise<boolean>
   openTempFolder(): Promise<void>
+  /** Connects on the first call; the connection then stays open until ftpDisconnect. */
   ftpList(cfg: FtpConfig): Promise<FtpListing>
   /** Asks for confirmation in a native dialog. Resolves to null if declined. */
-  ftpUpload(cfg: FtpConfig, files: string[], replacing: string[]): Promise<UploadedFile[] | null>
-  ftpDelete(cfg: FtpConfig, name: string): Promise<boolean>
+  ftpUpload(cfg: FtpConfig, files: string[], replacing: string[]): Promise<UploadResult | null>
+  /** Asks for confirmation in a native dialog. Resolves to null if declined. */
+  ftpDelete(cfg: FtpConfig, name: string): Promise<FtpListing | null>
+  ftpDisconnect(): Promise<void>
   loadSettings(): Promise<Settings>
   saveSettings(settings: Settings): Promise<void>
   onUploadProgress(listener: (p: UploadProgress) => void): () => void

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { FontInfo, FtpConfig, FtpListing, FtpSettings, RemoteEntry, UploadProgress } from '@shared/types'
+import type { FontInfo, FtpConfig, FtpListing, RemoteEntry, UploadProgress } from '@shared/types'
 import { errorMessage, formatSize } from '../format'
 import FontPreview from './FontPreview'
 import type { LogKind } from './LogPanel'
@@ -39,8 +39,8 @@ function groupSummary({ fonts }: FontGroup): string {
 }
 
 interface Props {
-  settings: FtpSettings
-  onSettings(settings: FtpSettings): void
+  settings: FtpConfig
+  onSettings(settings: FtpConfig): void
   fonts: FontInfo[]
   tempDir: string
   refreshFonts(): Promise<FontInfo[]>
@@ -59,9 +59,7 @@ export default function UploadTab(props: Props): JSX.Element {
   const [uploading, setUploading] = useState(false)
   const [expanded, setExpanded] = useState<string[]>([])
 
-  const set = <K extends keyof FtpSettings>(key: K, value: FtpSettings[K]): void => onSettings({ ...settings, [key]: value })
-  const { remember: _remember, ...cfg } = settings
-  const config: FtpConfig = cfg
+  const set = <K extends keyof FtpConfig>(key: K, value: FtpConfig[K]): void => onSettings({ ...settings, [key]: value })
 
   useEffect(() => api.onUploadProgress(setProgress), [])
 
@@ -73,45 +71,51 @@ export default function UploadTab(props: Props): JSX.Element {
   const allTicked = fonts.length > 0 && ticked.length === fonts.length
   const groups = useMemo(() => groupFonts(fonts), [fonts])
 
-  const list = async (): Promise<FtpListing | null> => {
+  // One FTP connection stays open from Connect until Disconnect: the unit hung once when a
+  // batch upload opened and closed a session per step, so nothing here reconnects to refresh.
+  const list = async (): Promise<void> => {
     setConnecting(true)
-    setStatus(`Connecting to ${settings.host}…`)
+    setStatus(listing ? `Listing ${settings.host}…` : `Connecting to ${settings.host}…`)
     try {
-      const result = await api.ftpList(config)
+      const result = await api.ftpList(settings)
+      if (!listing) log(`Connected to ${settings.host}: ${result.welcome}`, 'ok')
       setListing(result)
       setStatus(`Connected to ${settings.host}`)
-      log(`Connected to ${settings.host}: ${result.welcome}`, 'ok')
       log(`${result.cwd}: ${result.entries.length} entries`)
-      setConnecting(false)
-      return result
     } catch (err) {
       setListing(null)
       setStatus('FTP error')
       log(`FTP failed: ${errorMessage(err)}`, 'error')
-      setConnecting(false)
-      return null
     }
+    setConnecting(false)
+  }
+
+  const disconnect = async (): Promise<void> => {
+    await api.ftpDisconnect()
+    setListing(null)
+    setStatus('Disconnected')
+    log(`Disconnected from ${settings.host}`)
   }
 
   const upload = async (): Promise<void> => {
     setUploading(true)
     setStatus('Uploading…')
     try {
-      const done = await api.ftpUpload(config, toUpload, toUpload.filter((file) => remote.has(file)))
-      if (done) {
-        for (const f of done) {
-          log(`Uploaded ${f.name} (${f.local_size} bytes${f.remote_size === null ? ', unit did not report a size' : ''})`, 'ok')
+      const result = await api.ftpUpload(settings, toUpload, toUpload.filter((file) => remote.has(file)))
+      if (result) {
+        for (const f of result.done) {
+          log(`Uploaded ${f.name} (${f.size} bytes, size confirmed on the unit)`, 'ok')
         }
+        setListing(result.listing)
         setSelected([])
         setStatus('Uploaded. Load one font on the unit and check the CRT.')
-        await list()
       } else {
         setStatus('Ready')
       }
     } catch (err) {
+      // The connection is dropped on a failure; the listing may be stale until Refresh
       log(`Upload failed, stopped the batch: ${errorMessage(err)}`, 'error')
-      setStatus('Upload failed')
-      await list()
+      setStatus('Upload failed. Check the unit, then Refresh.')
     }
     setProgress(null)
     setUploading(false)
@@ -119,9 +123,10 @@ export default function UploadTab(props: Props): JSX.Element {
 
   const deleteRemote = async (entry: RemoteEntry): Promise<void> => {
     try {
-      if (await api.ftpDelete(config, entry.name)) {
+      const result = await api.ftpDelete(settings, entry.name)
+      if (result) {
         log(`Deleted ${entry.name} from ${settings.host}`, 'ok')
-        await list()
+        setListing(result)
       }
     } catch (err) {
       log(`Delete failed: ${errorMessage(err)}`, 'error')
@@ -168,34 +173,23 @@ export default function UploadTab(props: Props): JSX.Element {
             <input type="text" placeholder="192.168.1.50" value={settings.host} onChange={(e) => set('host', e.target.value)} />
           </label>
           <label className={ui.field}>
-            User
-            <input type="text" value={settings.user} onChange={(e) => set('user', e.target.value)} />
-          </label>
-          <label className={ui.field}>
             Port
             <input type="number" value={settings.port} onChange={(e) => set('port', Number(e.target.value))} />
           </label>
-          <label className={ui.field}>
-            Password
-            <input type="password" value={settings.password} onChange={(e) => set('password', e.target.value)} />
-          </label>
-          <label className={ui.field}>
-            Remote folder
-            <input type="text" placeholder="/" value={settings.dir} onChange={(e) => set('dir', e.target.value)} />
-          </label>
-          <label className={ui.check} title="Untick if the old server only does active mode">
-            <input type="checkbox" checked={settings.passive} onChange={(e) => set('passive', e.target.checked)} />
-            Passive mode
-          </label>
-          <label className={ui.check} title="Stored encrypted in your system keychain">
-            <input type="checkbox" checked={settings.remember} onChange={(e) => set('remember', e.target.checked)} />
-            Remember password
+          <label className={ui.field} title="Seconds to wait after each font. The unit locks up when transfers come too fast.">
+            Pause between fonts
+            <input type="number" min={0} max={600} value={settings.pause} onChange={(e) => set('pause', Number(e.target.value))} />
           </label>
         </div>
         <div className={styles.connectBar}>
-          <button className={`${ui.btnPrimary} ${styles.connectButton}`} disabled={connecting || !settings.host.trim()} onClick={list}>
-            {connecting ? 'Connecting…' : listing ? 'Refresh' : 'Connect'}
+          <button className={`${ui.btnPrimary} ${styles.connectButton}`} disabled={connecting || uploading || !settings.host.trim()} onClick={list}>
+            {connecting ? (listing ? 'Listing…' : 'Connecting…') : listing ? 'Refresh' : 'Connect'}
           </button>
+          {listing && (
+            <button className={`${ui.btn} ${styles.connectButton}`} disabled={connecting || uploading} onClick={disconnect}>
+              Disconnect
+            </button>
+          )}
         </div>
         <div className={ui.hint}>
           Load one font at a time on the unit. If it fails to load, hangs or crashes, stop and note which file.
@@ -300,6 +294,7 @@ export default function UploadTab(props: Props): JSX.Element {
           {progress ? (
             <>
               <span className={`${ui.mono} ${styles.progressName}`}>{progress.name}</span>
+              {progress.wait !== undefined && <span className={styles.actionHint}>sent, waiting {progress.wait} s before the next transfer</span>}
               <div className={styles.progressTrack}>
                 <div className={styles.progressFill} style={{ width: `${(progress.sent / progress.total) * 100}%` }} />
               </div>
@@ -324,8 +319,7 @@ export default function UploadTab(props: Props): JSX.Element {
                 {e.name}
                 {e.dir ? '/' : ''}
               </span>
-              <span className={styles.date}>{e.date}</span>
-              <span className={styles.size}>{e.size === null ? '' : formatSize(e.size)}</span>
+              <span className={styles.size}>{formatSize(e.size)}</span>
               {TEST_FONT.test(e.name) && (
                 <button className={ui.btnSmall} onClick={() => deleteRemote(e)}>
                   Delete
@@ -365,7 +359,7 @@ function TickBox({ checked, partial, disabled, label, onChange }: TickBoxProps):
 
 function OnUnit({ font, remote }: { font: FontInfo; remote?: RemoteEntry }): JSX.Element | null {
   if (!remote) return null
-  const same = remote.size === null || remote.size === font.size
+  const same = remote.size === font.size
   return (
     <span className={same ? styles.onUnit : styles.onUnitDiffers} title={same ? undefined : `Unit has ${remote.size} bytes, this file is ${font.size}`}>
       {same ? 'On unit' : 'Differs'}

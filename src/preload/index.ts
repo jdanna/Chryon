@@ -18,6 +18,7 @@ const api: MaxineApi = {
   ftpList: (cfg) => ipcRenderer.invoke('ftp:list', cfg),
   ftpUpload: (cfg, files, replacing) => ipcRenderer.invoke('ftp:upload', cfg, files, replacing),
   ftpDelete: (cfg, name) => ipcRenderer.invoke('ftp:delete', cfg, name),
+  ftpDisconnect: () => ipcRenderer.invoke('ftp:disconnect'),
   loadSettings: () => ipcRenderer.invoke('settings:load'),
   saveSettings: (settings) => ipcRenderer.invoke('settings:save', settings),
   onUploadProgress: (listener) => {

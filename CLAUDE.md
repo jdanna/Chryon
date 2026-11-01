@@ -7,11 +7,13 @@ Chyron MAXINE! character generator (iNFiNiT! family, broadcast lower-thirds
 hardware) well enough to write a **TTF → MAXINE font converter**, for
 preservation of these systems. Target fidelity: best-effort visual match.
 
-**Status (2026-10-30): the format is decoded end to end offline.** The glyph
-data is a run-length-encoded 8-bit antialiased bitmap, not outlines. A
-reader/writer and a TTF converter exist in `tools/` and round-trip all 36
-original files. Nothing produced by the converter has been loaded on the
-hardware yet — that is the next step (see `experiments/MANIFEST.md`).
+**Status (2026-11-01): the format is decoded and converter output loads on the
+hardware.** The glyph data is a run-length-encoded 8-bit antialiased bitmap, not
+outlines. A reader/writer and a TTF converter exist in `tools/` and round-trip all
+36 original files. On 2026-11-01 the user uploaded app-converted fonts over FTP and
+reported that everything works on the unit; the one defect was a blank icon in the
+unit's font browser, fixed the same day (the footer holds a 30×30 icon as well as
+the 66×66 thumbnail, and the converter had left it empty).
 
 ## Assets
 
@@ -31,13 +33,12 @@ hardware yet — that is the next step (see `experiments/MANIFEST.md`).
 - `tools/studio_bridge.py` — JSON-lines backend for the Electron app (see
   below). Wraps the converter and all FTP commands.
 - `tools/footer_template.bin` — the fixed 6036-byte footer copied from `.3000`
-  (only the 66×79 preview thumbnail inside it is regenerated per font).
+  (only the 66×66 thumbnail and 30×30 icon inside it are regenerated per font).
 
 ## Ground truth / test loop (we have real hardware)
 
 The user has the actual MAXINE unit connected to a Sony CRT. Transfer is
-manual (user copies files over the unit's network share), feedback is a
-phone photo of the CRT. Batch several test files per round. **Ask the user
+FTP (see the Electron app section), feedback is a phone photo of the CRT. Batch several test files per round. **Ask the user
 to stop and report immediately if a file fails to load, hangs, or crashes
 the unit.** Standard test string (typed with these line breaks):
 
@@ -55,10 +56,12 @@ A trailing box glyph in photos is the text cursor, not a character.
 
 Hardware-confirmed so far: `.0000` loads and shows the name "Swiss 721
 Bold(TM)" from the header; it renders as proportional bold sans with no edge,
-and the glyphs typed above all appear as standard ASCII shapes. Everything in
-the format section below is from static analysis plus internal consistency
-(round-trip, cross-file checks) and matches the one CRT photo we have, but is
-not byte-by-byte hardware validated.
+and the glyphs typed above all appear as standard ASCII shapes. Converted
+`.9200` lists in the Font Load Utility with its code, name and description,
+shows `ID: 9200/9000` and its "Aa" thumbnail on the control screen, and types
+correctly on the CRT (`docs/maxine-crt.jpg`, `docs/maxine-font-load.jpg`). The
+rest of the format section below comes from static analysis plus internal
+consistency (round-trip, cross-file checks).
 
 ## File format (all integers big-endian)
 
@@ -151,11 +154,16 @@ Kerning: 4-byte records `[left char][right char][s16 kern px]`, e.g.
 the Dutch series 245, the Pi font none.
 
 Footer (6036 bytes, identical layout in every file): 64 zero bytes, a fixed
-704-byte table of 16-bit values, a 10-byte header `0042 0042 001e 001e`, then
-a 66×79 8-bit **preview thumbnail of "Aa"** (0xee = background, 0x00 = ink,
-0x22 steps; the border shows as gray). Only the thumbnail pixels differ
-between files. The converter copies `tools/footer_template.bin` and redraws
-the thumbnail.
+704-byte table of 16-bit values, a 10-byte header `0000 0042 0042 001e 001e`
+(two image sizes), then two 8-bit **images of "Aa"**: a 66×66 preview thumbnail
+and, directly after it, the 30×30 **icon the unit's font browser shows**, then
+two zero bytes (`.0000` lacks them). 0xee = background, 0x00 = ink, 0x22 steps;
+the border shows as gray. In the originals both are left-aligned at x≈2 with the
+pair clipped on the right: thumbnail cap height ≈30 px on baseline row ≈48, icon
+≈14 px on row ≈22. Only these pixels differ between files. The converter copies
+`tools/footer_template.bin` and redraws both; until 2026-11-01 it treated the
+span as one 66×79 image and left the icon blank, which the unit shows as an
+empty box. `maxine_font.py thumb` writes both side by side.
 
 ### Measured scaling (for the converter)
 
@@ -198,8 +206,7 @@ through the decoder as a PNG.
 
 Defaults chosen to mimic the originals: baseline offset 11 (no edge) / 5
 (edge), 1 leading empty row in edge glyphs, 0x42/0x46 tag, hint bits 0,
-version 1317, master id 9000, chars 33–126 (the originals stop at 122; codes
-123–191 are untested on hardware).
+version 1317, master id 9000, chars 33–126 (the originals stop at 122).
 
 ## Electron app (MAXINE! Studio)
 
@@ -252,9 +259,32 @@ npm run dist:mac | dist:win | dist:linux | release     # unsigned installers
   overall size (1.2 here) and also drives field columns and row heights.
 - The Upload tab groups converted fonts by master id and display name (`groupFonts`), not
   id alone, because fonts left on the default `9000` would otherwise all land in one group.
-- Fonts are dotfiles, so `ftp_list_entries` tries `LIST -a`, then `LIST`, then
-  `NLST`. `ftp_delete` refuses anything but `.9xxx`, so the originals on the unit
-  can't be removed from the app. Nothing here has been tried on the real unit.
+- The unit runs a pSOS FTP server (`215 UNIX Type: Chyron: pSOS`) that takes any login,
+  so the app has no credential fields. `PASV`, `SIZE`, `MDTM`, `FEAT` and `STAT` are all
+  rejected: the app always uses active mode, so the unit must be able to connect back
+  through this computer's firewall. Plain `LIST` includes dotfiles. Every date is
+  Jan 1 1970, so none are shown.
+- **One control connection** (`FtpLink` in `studio_bridge.py`) stays open from Connect
+  until Disconnect or quit, and every command takes its lock in turn. A batch upload
+  that opened a session per step (login, STOR, LIST, QUIT, repeat) hung the unit on
+  2026-11-01, so don't go back to that. A reused link is probed with `NOOP` first and
+  reopened if the unit dropped it. A batch is N × `STOR` and one `LIST`, which is the
+  only way to read sizes back; upload and delete return that listing so the tab never
+  reconnects to refresh. The replica of the unit's replies used to test this lives
+  only in the session scratchpad, not the repo.
+- Even on one control connection the unit locked up after three files in a row, so
+  `ftp_upload` waits `pause` seconds (setting, default 30) after every `STOR`, including
+  before the closing `LIST`, and streams a countdown in the progress events. The guess
+  is that each active-mode data connection sits in TIME_WAIT on the unit's small TCP
+  stack and a few of them exhaust it; if a long pause works and a short one doesn't,
+  that's the confirmation, and the default can come down to the shortest safe value.
+- Login lands in `0.0/MAXINE`. Fonts are in `/MAXINE/MACHINE`, the only folder the app
+  uses; `/MAXINE/MESSAGE` holds message files. `ftp_delete` refuses anything but
+  `.9xxx`, so the originals on the unit can't be removed from the app.
+- Confirmed on the unit 2026-11-01: login, `LIST`, `RETR`, `STOR` and `DELE`. All 36
+  names and sizes match `fonts/`, `.0000` and `.3000` read back byte-identical, and
+  `.9100` uploaded in 0.9 s, read back identical and deleted cleanly. The single-session
+  rework has only been checked read-only on the unit (connect, list, list, QUIT).
 
 **This repo is public**, and builds are unsigned. `.env` is gitignored and unused by
 the build. `electron-builder.yml` is an allowlist, so it can't be packaged.
@@ -268,20 +298,16 @@ drives a packaged app, with a visible window and the real temp folder.
 
 ## Open questions (need hardware)
 
-1. Do converter outputs load at all? (`experiments/.9100` is the closest A/B
-   to `.0000`.) If not, suspects in order: the `0xe6` size hint, the
-   `0x04` field, codes >122 in the table, run splitting, the empty-row/EOR
-   conventions, the hint bits.
-2. Meaning of the glyph-record spacing hints (s8 at byte 1, u16 bits 15..4)
+1. Meaning of the glyph-record spacing hints (s8 at byte 1, u16 bits 15..4)
    and of `0xda`. Only matters for spacing polish.
-3. Exact border/shadow geometry (ours is symmetric; the originals' border is
+2. Exact border/shadow geometry (ours is symmetric; the originals' border is
    one row thinner at the bottom) and whether the device recolors layer 2 as
    one color or distinguishes border from shadow some other way.
-4. Whether `0xd8`/`0xf8`/`0xfe` affect on-screen line layout or are only
+3. Whether `0xd8`/`0xf8`/`0xfe` affect on-screen line layout or are only
    informational.
-5. Whether the MAXINE's FTP server accepts the app's commands (`LIST -a`, `SIZE`,
-   passive mode) and which folder holds the fonts; any cleaner capture than a
-   phone photo.
+4. The shortest safe pause between uploads (see the FTP notes), and whether a
+   hung unit comes back on its own or needs a power cycle. Any cleaner capture than
+   a phone photo.
 
 ## History
 
@@ -299,3 +325,9 @@ drives a packaged app, with a visible window and the real temp folder.
 - 2026-10-31 (Opus): replaced the local web GUI with an Electron app (two tabs,
   fonts saved to a temp folder, unsigned builds for mac/win/linux) on the same
   stack as Luminary/SuperGroup. Added a source preview and side-by-side compare.
+- 2026-11-01 (Opus): probed the live unit's FTP server and reworked the app around
+  it: no login fields, active mode only, fixed font folder, sizes verified from `LIST`.
+- 2026-11-01 (Fable): first hardware confirmation that converted fonts load and render.
+  Found the 30×30 browser icon in the footer and made the converter draw it. A multi-font
+  upload hung the unit; FTP became one persistent session with a Disconnect button,
+  and when that still locked up after three files, a pause between files was added.

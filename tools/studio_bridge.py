@@ -10,7 +10,7 @@ Every request runs on its own thread, so a font scan or an FTP transfer never
 blocks a conversion.  The process exits when stdin closes (the app went away).
 The converter needs Pillow, numpy and fontTools; FTP uses only the stdlib.
 """
-import base64, ftplib, glob, io, json, os, re, sys, threading, traceback
+import base64, contextlib, ftplib, glob, io, json, os, re, socket, sys, threading, time, traceback
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -27,8 +27,8 @@ FONT_DIRS = ["/System/Library/Fonts", "/Library/Fonts", os.path.expanduser("~/Li
 FONT_FILE = re.compile(r"^\.\d{4}$")     # the only names the MAXINE recognizes
 TEST_FONT = re.compile(r"^\.9\d{3}$")    # synthetic codes, the only fonts this app will delete
 
-UNIX_LIST = re.compile(r"^([-dl])\S{9}\S*\s+\d+\s+\S+(?:\s+\S+)?\s+(\d+)\s+(\S+\s+\S+\s+\S+)\s+(.+)$")
-DOS_LIST = re.compile(r"^(\d\d-\d\d-\d\d(?:\d\d)?\s+\d\d:\d\d[AP]M)\s+(<DIR>|\d+)\s+(.+)$", re.I)
+FONT_FOLDER = "/MAXINE/MACHINE"
+LIST_LINE = re.compile(r"^([-dl])\S{9}\s+\d+\s+\S+\s+\S+\s+(\d+)\s+\S+\s+\S+\s+\S+\s+(.+)$")
 
 
 def send(obj):
@@ -117,66 +117,99 @@ def convert(args):
     return {"font": font_info(path), "log": logs}
 
 
-# ---- FTP.  Each command is its own short session: nothing here has been tried on
-# the real unit, and a held-open connection is one more thing for old firmware to trip on.
+# ---- FTP.  The unit is a pSOS server ("UNIX Type: Chyron: pSOS").  It takes any login and
+# has no PASV, SIZE, MDTM, FEAT or STAT, so every transfer is active mode: the unit connects
+# back to this computer.  One control connection stays open from Connect to Disconnect and
+# every command goes through it in turn: a burst of short sessions hung the unit once.
 
-def ftp_connect(cfg):
-    host = (cfg.get("host") or "").strip()
-    if not host:
-        raise ValueError("Enter the MAXINE!'s FTP host or IP address.")
-    ftp = ftplib.FTP()
-    ftp.connect(host, int(cfg.get("port") or 21), timeout=20)
-    ftp.login(cfg.get("user") or "anonymous", cfg.get("password") or "")
-    ftp.set_pasv(bool(cfg.get("passive", True)))
-    d = (cfg.get("dir") or "").strip()
-    if d:
-        ftp.cwd(d)
-    return ftp
+class FtpLink:
+    def __init__(self):
+        self.ftp = None
+        self.where = None
+        self.cwd = ""
+        self.lock = threading.Lock()
+
+    def open(self, cfg):
+        host = (cfg.get("host") or "").strip()
+        if not host:
+            raise ValueError("Enter the MAXINE!'s FTP host or IP address.")
+        where = (host, int(cfg.get("port") or 21))
+        self.close()
+        ftp = ftplib.FTP()
+        ftp.connect(*where, timeout=20)
+        try:
+            ftp.login()
+            ftp.set_pasv(False)
+            ftp.cwd(FONT_FOLDER)
+            cwd = ftp.pwd()
+        except BaseException:
+            ftp.close()
+            raise
+        self.ftp, self.where, self.cwd = ftp, where, cwd
+
+    def close(self):
+        ftp, self.ftp, self.where = self.ftp, None, None
+        if ftp is not None:
+            try:
+                ftp.quit()
+            except ftplib.all_errors:
+                ftp.close()
+
+    def alive(self):
+        """A NOOP on the control connection, in case the unit was restarted since the last command."""
+        try:
+            return self.ftp.voidcmd("NOOP").startswith("200")
+        except ftplib.all_errors:      # includes OSError and EOFError
+            return False
+
+    @contextlib.contextmanager
+    def session(self, cfg):
+        """The open connection, reconnected if the host changed or the unit dropped it."""
+        with self.lock:
+            try:
+                if self.ftp is None or self.where != ((cfg.get("host") or "").strip(), int(cfg.get("port") or 21)) or not self.alive():
+                    self.open(cfg)
+                yield self.ftp
+            except socket.timeout as e:
+                self.close()
+                raise OSError("The unit stopped responding. It connects back to this computer for "
+                              "every transfer, so check that a firewall isn't blocking it.") from e
+            except (OSError, EOFError, ftplib.error_temp):
+                self.close()
+                raise
+
+
+LINK = FtpLink()
 
 
 def parse_list_line(line):
-    m = UNIX_LIST.match(line)
-    if m:
-        return {"name": m[4], "size": int(m[2]), "date": m[3], "dir": m[1] == "d"}
-    m = DOS_LIST.match(line)
-    if m:
-        is_dir = m[2].upper() == "<DIR>"
-        return {"name": m[3], "size": None if is_dir else int(m[2]), "date": m[1], "dir": is_dir}
-    return {"name": line.split()[-1], "size": None, "date": "", "dir": False} if line.strip() else None
+    m = LIST_LINE.match(line)
+    return {"name": m[3], "size": int(m[2]), "dir": m[1] == "d"} if m else None
 
 
-def ftp_list_entries(ftp):
-    # The fonts are dotfiles, which a plain LIST hides on most Unix-style servers.
-    # `LIST -a` isn't standard (some servers read -a as a path), so fall back in steps.
+def listing(ftp):
     lines = []
-    try:
-        ftp.retrlines("LIST -a", lines.append)
-    except ftplib.all_errors:
-        lines = []
-    if not lines:
-        try:
-            ftp.retrlines("LIST", lines.append)
-        except ftplib.all_errors:
-            lines = ftp.nlst()
-    entries = [e for e in map(parse_list_line, lines) if e and e["name"] not in (".", "..")]
+    ftp.retrlines("LIST", lines.append)
+    entries = [e for e in map(parse_list_line, lines) if e]
     entries.sort(key=lambda e: (not FONT_FILE.match(e["name"]), e["name"]))
-    return entries
+    return {"welcome": ftp.getwelcome(), "cwd": LINK.cwd, "entries": entries}
 
 
 def ftp_list(args):
-    ftp = ftp_connect(args)
-    try:
-        return {"welcome": ftp.getwelcome(), "cwd": ftp.pwd(), "entries": ftp_list_entries(ftp)}
-    finally:
-        ftp.quit()
+    with LINK.session(args) as ftp:
+        return listing(ftp)
 
 
 def ftp_upload(args):
-    """Upload a batch, stopping at the first failure so the unit is never left guessing."""
-    ftp = ftp_connect(args)
+    """Upload a batch, stopping at the first failure so the unit is never left guessing.
+    Sizes are checked from one listing at the end: it's the only way to read a length back.
+    Every transfer is a data connection the unit has to tear down, and it locked up after
+    three in quick succession even on one control connection, so `pause` seconds go by
+    after each file before the next connection, with a countdown for the UI."""
     done = []
-    try:
-        for p in args["paths"]:
+    pause = float(args.get("pause") or 0)
+    with LINK.session(args) as ftp:
+        for i, p in enumerate(args["paths"]):
             name = os.path.basename(p); total = os.path.getsize(p); sent = 0
             def progress(block):
                 nonlocal sent
@@ -184,32 +217,36 @@ def ftp_upload(args):
                 send({"event": "upload", "name": name, "sent": sent, "total": total})
             with open(p, "rb") as fh:
                 ftp.storbinary("STOR " + name, fh, callback=progress)
-            try:
-                remote = ftp.size(name)
-            except ftplib.all_errors:
-                remote = None
-            if remote is not None and remote != total:
-                raise IOError(f"{name}: unit reports {remote} bytes, expected {total}")
-            done.append({"name": name, "local_size": total, "remote_size": remote})
-    finally:
-        ftp.quit()
-    return done
+            done.append({"name": name, "size": total})
+            left = pause
+            while left > 0:
+                send({"event": "upload", "name": name, "sent": total, "total": total, "wait": round(left)})
+                time.sleep(min(left, 1)); left -= 1
+        after = listing(ftp)
+    sizes = {e["name"]: e["size"] for e in after["entries"]}
+    short = [f"{d['name']} ({sizes.get(d['name'])} of {d['size']} bytes)" for d in done if sizes.get(d["name"]) != d["size"]]
+    if short:
+        raise IOError("The unit has the wrong size for " + ", ".join(short) + ". Don't load them.")
+    return {"done": done, "listing": after}
 
 
 def ftp_delete(args):
     name = args["name"]
     if not TEST_FONT.match(name):      # never touch the unit's original fonts
         raise ValueError("Only 9xxx test fonts can be deleted from the unit: " + name)
-    ftp = ftp_connect(args)
-    try:
+    with LINK.session(args) as ftp:
         ftp.delete(name)
-    finally:
-        ftp.quit()
+        return listing(ftp)
+
+
+def ftp_disconnect(args):
+    with LINK.lock:
+        LINK.close()
     return True
 
 
 COMMANDS = {"system_fonts": system_fonts, "faces": faces, "outputs": outputs, "source_preview": source_preview, "convert": convert,
-            "ftp_list": ftp_list, "ftp_upload": ftp_upload, "ftp_delete": ftp_delete}
+            "ftp_list": ftp_list, "ftp_upload": ftp_upload, "ftp_delete": ftp_delete, "ftp_disconnect": ftp_disconnect}
 
 
 def handle(req):
@@ -225,6 +262,7 @@ def main():
     for line in sys.stdin:
         if line.strip():
             threading.Thread(target=handle, args=(json.loads(line),), daemon=True).start()
+    ftp_disconnect({})      # a QUIT on the way out, not a dropped socket
 
 
 if __name__ == "__main__":

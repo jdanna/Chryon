@@ -18,12 +18,12 @@ Options of note:
   --no-kern                   don't copy pair kerning from the TTF (kern/GPOS)
   --preview                   also write a PNG specimen rendered *from the output file*
 
-Nothing here is hardware-validated yet: load the result on the MAXINE and
-photograph it (see CLAUDE.md).  Stop and report if the unit fails to load it.
+Load the result on the MAXINE and photograph it (see CLAUDE.md).  Stop and
+report if the unit fails to load it.
 """
 import argparse, math, os, string, sys, unicodedata
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 from fontTools.ttLib import TTFont
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -294,20 +294,25 @@ def ttf_kerning(tt, chars, scale, cmap):
     return out
 
 
-def make_thumbnail(rz, path, index, edge):
-    img = Image.new("L", (mx.THUMB_W * 4, mx.THUMB_H * 4), 0)
-    f = ImageFont.truetype(path, 44 * 4, index=index, encoding=rz.encoding)
-    d = ImageDraw.Draw(img)
-    d.text((mx.THUMB_W * 2, 52 * 4), rz.draw_char("A") + rz.draw_char("a"), font=f, fill=255, anchor="ms")
-    a = np.asarray(img.resize((mx.THUMB_W, mx.THUMB_H), Image.BOX), dtype=np.float32) / 255.0
+def aa_image(rz, path, index, edge, size, em, baseline):
+    """A size×size "Aa" at `em` px with its baseline on `baseline`, left-aligned and clipped
+    on the right like the originals. Background 0xee, face 0x00, edge gray, in 0x22 steps."""
+    img = Image.new("L", (size * 4, size * 4), 0)
+    f = ImageFont.truetype(path, em * 4, index=index, encoding=rz.encoding)
+    ImageDraw.Draw(img).text((2 * 4, baseline * 4), rz.draw_char("A") + rz.draw_char("a"), font=f, fill=255, anchor="ls")
+    a = np.asarray(img.resize((size, size), Image.BOX), dtype=np.float32) / 255.0
     if edge != "none":
-        e = np.asarray(img.filter(__import__("PIL.ImageFilter", fromlist=["MaxFilter"]).MaxFilter(9))
-                       .resize((mx.THUMB_W, mx.THUMB_H), Image.BOX), dtype=np.float32) / 255.0
+        e = np.asarray(img.filter(ImageFilter.MaxFilter(9)).resize((size, size), Image.BOX), dtype=np.float32) / 255.0
         v = 0xee * (1 - e) + 0x88 * (e - a) + 0x00 * a
     else:
         v = 0xee * (1 - a)
-    q = np.clip(np.rint(v / 0x22) * 0x22, 0, 0xee).astype(np.uint8)
-    return q.tolist()
+    return np.clip(np.rint(v / 0x22) * 0x22, 0, 0xee).astype(np.uint8).tolist()
+
+
+def make_thumbnail(rz, path, index, edge):
+    """(66x66 thumbnail, 30x30 browser icon), laid out like the originals' footers."""
+    return (aa_image(rz, path, index, edge, mx.THUMB, 44, 48),
+            aa_image(rz, path, index, edge, mx.ICON, 20, 22))
 
 
 def vertical_metrics(rz, chars, edge, lines, baseline_off=None, log=print):
@@ -449,7 +454,7 @@ def convert(ttf, scanlines=46, code="9100", master_id="9000", name=None, edge="n
     font.max_advance = max_adv
     if kern:
         font.kerning = ttf_kerning(rz.tt, chars, rz.sx * spacing, rz.cmap)
-    font.footer = mx.set_thumbnail(mx.default_footer(), make_thumbnail(rz, ttf, index, edge))
+    font.footer = mx.set_thumbnail(mx.default_footer(), *make_thumbnail(rz, ttf, index, edge))
 
     data = mx.build(font, blobs, code, has_edge, edge == "shadow")
     os.makedirs(out, exist_ok=True)

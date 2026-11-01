@@ -42,7 +42,8 @@ Format summary (big-endian throughout; see CLAUDE.md for the full spec):
                     (an overlay; it does not advance x).
   then   kerning table: 4-byte records [left char][right char][s16 kern px]
   then   6036-byte footer: 64 zero bytes, a fixed 704-byte table, a 10-byte header
-         (66,66,30,30) and a 66x79 8-bit "Aa" preview thumbnail (0xee = background).
+         (0, 66,66, 30,30) and two 8-bit "Aa" images: a 66x66 preview thumbnail and the
+         30x30 icon the unit's font browser shows (0xee = background), then 2 zero bytes.
 """
 import struct, sys, os, re, argparse
 from dataclasses import dataclass, field
@@ -52,8 +53,10 @@ BULK_BASE = 0x888
 TABLE_OFF = 0x108
 NSLOTS = 192
 FOOTER_LEN = 6036
-THUMB_W, THUMB_H = 66, 79
-THUMB_OFF = 0x30a  # inside footer
+THUMB = 66                       # preview thumbnail, square
+ICON = 30                        # browser icon, square, right after the thumbnail
+THUMB_OFF = 0x30a                # inside footer
+ICON_OFF = THUMB_OFF + THUMB * THUMB
 
 # ---------------------------------------------------------------- data model
 
@@ -300,14 +303,22 @@ def default_footer() -> bytes:
         return open(p, "rb").read()
     raise FileNotFoundError("tools/footer_template.bin missing; run: maxine_font.py extract-footer fonts/.3000")
 
-def set_thumbnail(footer: bytes, img_rows: List[List[int]]) -> bytes:
-    """Replace the 66x79 preview thumbnail inside a footer. Values 0..255, 0xee = bg."""
+def set_thumbnail(footer: bytes, thumb_rows: List[List[int]], icon_rows: List[List[int]]) -> bytes:
+    """Replace the 66x66 thumbnail and 30x30 icon inside a footer. Values 0..255, 0xee = bg."""
     b = bytearray(footer)
-    for y in range(THUMB_H):
-        for x in range(THUMB_W):
-            v = img_rows[y][x] if y < len(img_rows) and x < len(img_rows[y]) else 0xee
-            b[THUMB_OFF + y * THUMB_W + x] = v
+    for off, size, rows in ((THUMB_OFF, THUMB, thumb_rows), (ICON_OFF, ICON, icon_rows)):
+        for y in range(size):
+            for x in range(size):
+                b[off + y * size + x] = rows[y][x] if y < len(rows) and x < len(rows[y]) else 0xee
     return bytes(b)
+
+def footer_images(footer: bytes):
+    """(thumbnail, icon) as PIL 'L' images."""
+    from PIL import Image
+    out = []
+    for off, size in ((THUMB_OFF, THUMB), (ICON_OFF, ICON)):
+        im = Image.new("L", (size, size)); im.putdata(list(footer[off:off + size * size])); out.append(im)
+    return tuple(out)
 
 # ---------------------------------------------------------------- rendering
 
@@ -388,8 +399,10 @@ def main(argv=None):
             print(f"{chr(l)}{chr(r)} {k:+d}")
     elif a.cmd == "thumb":
         from PIL import Image
-        im = Image.new("L", (THUMB_W, THUMB_H)); im.putdata(list(f.footer[THUMB_OFF:THUMB_OFF + THUMB_W * THUMB_H]))
-        im.resize((THUMB_W * 4, THUMB_H * 4)).save(a.out); print("wrote", a.out)
+        thumb, icon = footer_images(f.footer)
+        im = Image.new("L", ((THUMB + ICON + 2) * 4, THUMB * 4), 0x80)
+        im.paste(thumb.resize((THUMB * 4,) * 2), (0, 0)); im.paste(icon.resize((ICON * 4,) * 2), ((THUMB + 2) * 4, 0))
+        im.save(a.out); print("wrote", a.out)
     elif a.cmd == "extract-footer":
         p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "footer_template.bin")
         open(p, "wb").write(f.footer); print("wrote", p, len(f.footer))

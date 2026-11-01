@@ -29,11 +29,6 @@ export default function TopBar({ tab, onTab, status, fontCount }: Props): JSX.El
         <span className={styles.appName}>MAXINE! Studio</span>
         <span className={styles.meta}>{status}</span>
       </div>
-      <div className={styles.right}>
-        <span className={styles.badge} title="No converter output has been loaded on a real MAXINE! yet">
-          UNTESTED ON HARDWARE
-        </span>
-      </div>
     </header>
   )
 }

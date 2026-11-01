@@ -82,16 +82,3 @@
   text-overflow: ellipsis;
   max-width: 100%;
 }
-
-.right {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.badge {
-  flex-shrink: 0;
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--color-warning);
-}

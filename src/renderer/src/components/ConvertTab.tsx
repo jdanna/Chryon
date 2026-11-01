@@ -140,7 +140,7 @@ export default function ConvertTab(props: Props): JSX.Element {
         onCurrent(font.file)
         setView('compare')
       }
-      setStatus('Converted, not yet tested on hardware')
+      setStatus('Converted')
     } catch (err) {
       log(`Conversion failed, stopped: ${errorMessage(err)}`, 'error')
       setStatus('Conversion failed')

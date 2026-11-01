@@ -39,16 +39,17 @@ safe, and the app asks before replacing a font.
 
 ## Get the app
 
-There are no downloads yet, so you'll need to build it. MAXINE! Studio runs on Mac,
-Windows and Linux. With [Node.js](https://nodejs.org) installed, run one of these:
+[Download the latest release](https://github.com/jdanna/Chryon/releases/latest) for Mac,
+Windows or Linux. Builds aren't signed, so your system may warn you or refuse to open
+the app at first.
+
+To build it yourself, install [Node.js](https://nodejs.org) and run one of these. The
+installer lands in `dist/`.
 
 ```sh
 npm install
 npm run dist:mac      # or dist:win, dist:linux
 ```
-
-The installer lands in `dist/`. Builds aren't signed, so your system may warn you or
-refuse to open the app at first.
 
 ## More
 

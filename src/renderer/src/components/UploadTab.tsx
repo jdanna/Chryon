@@ -176,9 +176,17 @@ export default function UploadTab(props: Props): JSX.Element {
             Port
             <input type="number" value={settings.port} onChange={(e) => set('port', Number(e.target.value))} />
           </label>
-          <label className={ui.field} title="Seconds to wait after each font. The unit locks up when transfers come too fast.">
+          <label className={ui.field} title="Seconds to wait after each font">
             Pause between fonts
             <input type="number" min={0} max={600} value={settings.pause} onChange={(e) => set('pause', Number(e.target.value))} />
+          </label>
+          <label className={ui.field} title="Upload speed limit in Mbit/s. Never goes above 10.">
+            Max speed, Mbit/s
+            <input type="number" min={0.1} max={10} step={0.1} value={settings.speed} onChange={(e) => set('speed', Number(e.target.value))} />
+          </label>
+          <label className={ui.field} title="Milliseconds to wait after each reply from the unit before the next FTP command">
+            Command pause, ms
+            <input type="number" min={0} max={5000} step={50} value={settings.gap} onChange={(e) => set('gap', Number(e.target.value))} />
           </label>
         </div>
         <div className={styles.connectBar}>

@@ -73,8 +73,12 @@ export interface ConvertResult {
 export interface FtpConfig {
   host: string
   port: number
-  /** Seconds between files in a batch. The unit locks up when data connections come too fast. */
+  /** Seconds to wait after each file in a batch. */
   pause: number
+  /** Upload ceiling in Mbit/s. The bridge never goes above 10. */
+  speed: number
+  /** Milliseconds to wait after each reply before the next FTP command. */
+  gap: number
 }
 
 export interface Settings {

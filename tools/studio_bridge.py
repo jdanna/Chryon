@@ -10,7 +10,7 @@ Every request runs on its own thread, so a font scan or an FTP transfer never
 blocks a conversion.  The process exits when stdin closes (the app went away).
 The converter needs Pillow, numpy and fontTools; FTP uses only the stdlib.
 """
-import base64, contextlib, ftplib, glob, io, json, os, re, socket, sys, threading, time, traceback
+import base64, contextlib, ftplib, glob, io, json, os, re, socket, sys, tempfile, threading, time, traceback
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -118,9 +118,49 @@ def convert(args):
 
 
 # ---- FTP.  The unit is a pSOS server ("UNIX Type: Chyron: pSOS").  It takes any login and
-# has no PASV, SIZE, MDTM, FEAT or STAT, so every transfer is active mode: the unit connects
-# back to this computer.  One control connection stays open from Connect to Disconnect and
-# every command goes through it in turn: a burst of short sessions hung the unit once.
+# refuses passive mode and has no SIZE, MDTM, FEAT or STAT, so every transfer is active mode:
+# the unit connects back to this computer.  One control connection stays open from Connect
+# to Disconnect and every command goes through it in turn: a burst of short sessions hung
+# the unit once.
+# Everything is paced for the same reason, and logged, because a hung unit can't be asked
+# what happened.
+
+MAX_MBIT = 10           # upload ceiling, whatever the setting says
+FTP_TRACE = os.path.join(tempfile.gettempdir(), "MAXINE Studio", "ftp-trace.log")
+
+
+def trace(text):
+    try:
+        os.makedirs(os.path.dirname(FTP_TRACE), exist_ok=True)
+        with open(FTP_TRACE, "a") as fh:
+            now = time.time()
+            fh.write(f"{time.strftime('%H:%M:%S', time.localtime(now))}.{int(now * 1000) % 1000:03d} {text}\n")
+    except OSError:
+        pass
+
+
+class PacedFTP(ftplib.FTP):
+    """Waits `gap` seconds after each reply before the next command, and logs both."""
+    gap = 0.0
+    last_reply = 0.0
+
+    def putcmd(self, line):
+        wait = self.gap - (time.monotonic() - self.last_reply)
+        if wait > 0:
+            time.sleep(wait)
+        trace("> " + line)
+        super().putcmd(line)
+
+    def getmultiline(self):
+        line = super().getmultiline()
+        self.last_reply = time.monotonic()
+        trace("< " + line)
+        return line
+
+
+def command_gap(cfg):
+    return max(float(cfg.get("gap") or 0), 0) / 1000
+
 
 class FtpLink:
     def __init__(self):
@@ -135,7 +175,9 @@ class FtpLink:
             raise ValueError("Enter the MAXINE!'s FTP host or IP address.")
         where = (host, int(cfg.get("port") or 21))
         self.close()
-        ftp = ftplib.FTP()
+        trace(f"--- connect {where[0]}:{where[1]}")
+        ftp = PacedFTP()
+        ftp.gap = command_gap(cfg)
         ftp.connect(*where, timeout=20)
         try:
             ftp.login()
@@ -155,6 +197,13 @@ class FtpLink:
             except ftplib.all_errors:
                 ftp.close()
 
+    def drop(self, why):
+        """Hang up without a QUIT: after a failure the unit may not answer one."""
+        trace(f"! {why}")
+        ftp, self.ftp, self.where = self.ftp, None, None
+        if ftp is not None:
+            ftp.close()
+
     def alive(self):
         """A NOOP on the control connection, in case the unit was restarted since the last command."""
         try:
@@ -169,13 +218,14 @@ class FtpLink:
             try:
                 if self.ftp is None or self.where != ((cfg.get("host") or "").strip(), int(cfg.get("port") or 21)) or not self.alive():
                     self.open(cfg)
+                self.ftp.gap = command_gap(cfg)
                 yield self.ftp
             except socket.timeout as e:
-                self.close()
+                self.drop("timed out")
                 raise OSError("The unit stopped responding. It connects back to this computer for "
                               "every transfer, so check that a firewall isn't blocking it.") from e
-            except (OSError, EOFError, ftplib.error_temp):
-                self.close()
+            except (OSError, EOFError, ftplib.error_temp) as e:
+                self.drop(f"{type(e).__name__}: {e}")
                 raise
 
 
@@ -203,20 +253,28 @@ def ftp_list(args):
 def ftp_upload(args):
     """Upload a batch, stopping at the first failure so the unit is never left guessing.
     Sizes are checked from one listing at the end: it's the only way to read a length back.
-    Every transfer is a data connection the unit has to tear down, and it locked up after
-    three in quick succession even on one control connection, so `pause` seconds go by
-    after each file before the next connection, with a countdown for the UI."""
+    The unit locks up partway through batches, so data goes out at `speed` Mbit/s at most,
+    in 1 KB writes to keep bursts small, and `pause` seconds go by after each file, with a
+    countdown for the UI."""
     done = []
     pause = float(args.get("pause") or 0)
+    rate = min(float(args.get("speed") or MAX_MBIT), MAX_MBIT) * 1e6 / 8     # bytes per second
     with LINK.session(args) as ftp:
         for i, p in enumerate(args["paths"]):
             name = os.path.basename(p); total = os.path.getsize(p); sent = 0
+            started = time.monotonic()
             def progress(block):
                 nonlocal sent
                 sent += len(block)
-                send({"event": "upload", "name": name, "sent": sent, "total": total})
+                if sent % 8192 == 0 or sent == total:
+                    send({"event": "upload", "name": name, "sent": sent, "total": total})
+                if sent % 65536 == 0 or sent == total:
+                    trace(f"  {name}: {sent} of {total} bytes written")
+                wait = started + sent / rate - time.monotonic()
+                if wait > 0:
+                    time.sleep(wait)
             with open(p, "rb") as fh:
-                ftp.storbinary("STOR " + name, fh, callback=progress)
+                ftp.storbinary("STOR " + name, fh, 1024, progress)
             done.append({"name": name, "size": total})
             left = pause
             while left > 0:

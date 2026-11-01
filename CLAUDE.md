@@ -260,10 +260,13 @@ npm run dist:mac | dist:win | dist:linux | release     # unsigned installers
 - The Upload tab groups converted fonts by master id and display name (`groupFonts`), not
   id alone, because fonts left on the default `9000` would otherwise all land in one group.
 - The unit runs a pSOS FTP server (`215 UNIX Type: Chyron: pSOS`) that takes any login,
-  so the app has no credential fields. `PASV`, `SIZE`, `MDTM`, `FEAT` and `STAT` are all
-  rejected: the app always uses active mode, so the unit must be able to connect back
-  through this computer's firewall. Plain `LIST` includes dotfiles. Every date is
-  Jan 1 1970, so none are shown.
+  so the app has no credential fields. `SIZE`, `MDTM`, `FEAT` and `STAT` are rejected.
+  **Passive mode isn't available**: `PASV` gets 502 and the user confirmed the unit
+  refuses passive, so don't try it again. Active mode is the only option: the unit
+  connects back to this computer on an ephemeral port, and the user's firewall drops
+  anything that isn't established/related, so those connections may be getting through
+  only some of the time. Plain `LIST` includes dotfiles. Every date is Jan 1 1970, so
+  none are shown.
 - **One control connection** (`FtpLink` in `studio_bridge.py`) stays open from Connect
   until Disconnect or quit, and every command takes its lock in turn. A batch upload
   that opened a session per step (login, STOR, LIST, QUIT, repeat) hung the unit on
@@ -272,12 +275,16 @@ npm run dist:mac | dist:win | dist:linux | release     # unsigned installers
   only way to read sizes back; upload and delete return that listing so the tab never
   reconnects to refresh. The replica of the unit's replies used to test this lives
   only in the session scratchpad, not the repo.
-- Even on one control connection the unit locked up after three files in a row, so
-  `ftp_upload` waits `pause` seconds (setting, default 30) after every `STOR`, including
-  before the closing `LIST`, and streams a countdown in the progress events. The guess
-  is that each active-mode data connection sits in TIME_WAIT on the unit's small TCP
-  stack and a few of them exhaust it; if a long pause works and a short one doesn't,
-  that's the confirmation, and the default can come down to the shortest safe value.
+- **Batch uploads need pacing.** A 5-font batch finished cleanly on the unit on
+  2026-11-01 with the current defaults: `pause` 5 (s after each `STOR`), `speed` 1
+  (Mbit/s, hard ceiling `MAX_MBIT` 10, sent in 1 KB writes) and `gap` 250 (ms after each
+  reply before the next command). Earlier batches locked it up after a few fonts: first
+  as a session per step, then on one connection with a 2 s pause and no speed or command
+  limits. Which setting matters isn't known, because they all changed together, so
+  change one at a time if lowering them. Reads have never hung it: 8 `LIST`/`NLST` in
+  one quick run were fine.
+- Every command, reply and 64 KB of progress is appended, with timestamps, to
+  `<system temp>/MAXINE Studio/ftp-trace.log`. After a hang, read that first.
 - Login lands in `0.0/MAXINE`. Fonts are in `/MAXINE/MACHINE`, the only folder the app
   uses; `/MAXINE/MESSAGE` holds message files. `ftp_delete` refuses anything but
   `.9xxx`, so the originals on the unit can't be removed from the app.
@@ -305,9 +312,9 @@ drives a packaged app, with a visible window and the real temp folder.
    one color or distinguishes border from shadow some other way.
 3. Whether `0xd8`/`0xf8`/`0xfe` affect on-screen line layout or are only
    informational.
-4. The shortest safe pause between uploads (see the FTP notes), and whether a
-   hung unit comes back on its own or needs a power cycle. Any cleaner capture than
-   a phone photo.
+4. Which pacing setting stops the batch-upload lockups (see the FTP notes), and
+   whether a hung unit comes back on its own or needs a power cycle. Any cleaner
+   capture than a phone photo.
 
 ## History
 

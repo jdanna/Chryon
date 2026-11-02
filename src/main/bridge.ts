@@ -8,15 +8,15 @@ interface Pending {
 }
 
 function pythonCommand(): { bin: string; args: string[] } {
-  // Keep .pyc files out of the install folder, which may be read-only
-  const cache = ['-X', `pycache_prefix=${join(app.getPath('userData'), 'pycache')}`]
   if (!app.isPackaged) {
-    return { bin: process.platform === 'win32' ? 'python' : 'python3', args: [...cache, '-X', 'utf8'] }
+    const cache = `pycache_prefix=${join(app.getPath('userData'), 'pycache')}`
+    return { bin: process.platform === 'win32' ? 'python' : 'python3', args: ['-X', cache, '-X', 'utf8'] }
   }
   const python = join(process.resourcesPath, 'python')
   return {
     bin: process.platform === 'win32' ? join(python, 'python.exe') : join(python, 'bin', 'python3'),
-    args: ['-I', ...cache, '-X', 'utf8'] // -I: ignore any Python setup on the user's machine
+    // -I: ignore any Python setup on the user's machine. -B: its .pyc files come with the package
+    args: ['-I', '-B', '-X', 'utf8']
   }
 }
 

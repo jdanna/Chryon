@@ -151,4 +151,18 @@ for (const wheel of wheels) {
 }
 
 rmSync(tmpDownloadDir, { recursive: true, force: true })
+
+// The packaged app writes nothing to its install folder, so .pyc files ship in the
+// package instead of being compiled on every launch. Bytecode only depends on the
+// Python version, so the host interpreter can compile for any target.
+// unchecked-hash means an installer changing file times can't invalidate them.
+console.log(`[vendor-python-packages] Compiling bytecode for ${key}...`)
+execFileSync(hostPythonBin, [
+  '-m', 'compileall', '-q', '-f', '-j', '0',
+  '--invalidation-mode', 'unchecked-hash',
+  '-s', pythonDir,
+  '-x', '[/\\\\](pip|test|tests|idlelib|tkinter|turtledemo)[/\\\\]',
+  dirname(sitePackagesDir)
+], { stdio: 'inherit' })
+
 console.log(`[vendor-python-packages] Done. Vendored into resources/python/${key}/python/`)

@@ -5,7 +5,7 @@ import type { Settings } from '@shared/types'
 
 const DEFAULTS: Settings = {
   convert: { scanlines: 46, code: '9100', masterId: '9000', edge: 'none', lines: 3, aspect: 1.17, spacing: 0.95, kern: true, batchAbove: 0, batchBelow: 0, batchStep: 4 },
-  ftp: { host: '', port: 21, pause: 5, speed: 1, gap: 250 },
+  ftp: { host: '10.37.0.2', port: 21, pause: 5, speed: 1, gap: 250 }, // the emulator's address
   emulator: { image: '', folder: '' }
 }
 
@@ -15,7 +15,8 @@ export function loadSettings(): Settings {
   try {
     const saved = JSON.parse(readFileSync(settingsPath(), 'utf8'))
     const { host, port, pause, speed, gap } = { ...DEFAULTS.ftp, ...saved.ftp }
-    return { convert: { ...DEFAULTS.convert, ...saved.convert }, ftp: { host, port, pause, speed, gap }, emulator: { ...DEFAULTS.emulator, ...saved.emulator } }
+    // Older versions saved an empty address, so that counts as never set
+    return { convert: { ...DEFAULTS.convert, ...saved.convert }, ftp: { host: host || DEFAULTS.ftp.host, port, pause, speed, gap }, emulator: { ...DEFAULTS.emulator, ...saved.emulator } }
   } catch {
     return DEFAULTS
   }

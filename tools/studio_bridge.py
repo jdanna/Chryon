@@ -315,7 +315,14 @@ def handle(req):
         send({"id": req["id"], "ok": False, "error": str(e) or type(e).__name__})
 
 
+def preload():
+    """The first load after an install is slow while the system checks numpy's and Pillow's native
+    libraries, so that happens during the font scan, not on the first preview."""
+    import ttf2maxine
+
+
 def main():
+    threading.Thread(target=preload, daemon=True).start()
     send({"event": "ready"})
     for line in sys.stdin:
         if line.strip():

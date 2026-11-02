@@ -112,10 +112,17 @@ it over FTP and reboot the emulator. See `docs/remote-control-research.md` for t
 
 ### Export
 
-On a Mac, use Export > Video and Key in the menu bar, or Command-E, and choose a folder. Right Ctrl saves to
-`emulator/run/snap/maxine/` instead, or to `snap/maxine/` in the saved image location in the app, and it's the only
-way on Linux and Windows. Each export writes 720×486 `video` and `key` PNGs, plus `-square` copies
-at 648×486 for square-pixel tools.
+Each export writes a matching `video` and `key` PNG, at one of two sizes:
+
+- Native is the 720×486 raster.
+- Square Pixel is 640×480, named `-640x480`. It narrows the picture to 648×486, then crops 4 columns from each side
+  and 3 lines from the top and bottom.
+
+Press EXPORT NATIVE or EXPORT SQUARE PIXEL, to the right of the keypad. On Linux and Windows, that saves to
+`snap/maxine/` in the saved image location in the app, or `emulator/run/snap/maxine/` from a checkout. On a Mac, it
+asks for a folder, and so does the Export menu: Command-E for Native, or Shift-Command-E for Square Pixel.
+
+Right Ctrl or Shift+Right Ctrl saves straight to the snapshot folder on any system.
 
 ## Limitations
 

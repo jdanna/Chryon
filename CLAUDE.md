@@ -245,8 +245,10 @@ npm run dist:mac | dist:win | dist:linux | release     # unsigned installers
   `resources/requirements-prod.txt` vendored in by
   `scripts/vendor-python-packages.mjs`. One Mac can build all three platforms. The Mac
   build is Apple Silicon only; Intel Mac support was removed on 2026-11-02.
-  The interpreter runs with `-I` and `pycache_prefix` under userData, so no
-  `.pyc` lands in the install folder.
+  That script also compiles the `.pyc` files, which saves about 0.3 s, and the interpreter runs with
+  `-I -B`, so nothing lands in the install folder. The first load after an install takes about 3 s, nearly
+  all of it the system checking numpy's and Pillow's native libraries, so `preload()` in `studio_bridge.py`
+  does that at launch. Measure on a fresh copy of the tree, because re-vendoring resets that check.
 - Previews: `ttf2maxine.source_sheet` draws the source outlines with the converter's
   metrics, live as settings change (`source_preview`). A conversion writes `.NNNN.png`
   (decoded file) and `.NNNN.source.png` (same layout, driven by the file), both using

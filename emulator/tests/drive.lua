@@ -5,7 +5,8 @@
 --   <frame> tablet <b x y>            8 hex digits: button nibble, then 12 bits each of X and Y
 --   <frame> ptr <x y>                 8 hex digits for the pointer port; see pointer_w in maxine.cpp
 --   <frame> press | release <n>       panel key, n is its index in artwork/make_layout.py
---   <frame> snap | export | quit      snapshot, Video and Key files, or stop
+--   <frame> export [1]                Video and Key files, native or with 1 square pixel
+--   <frame> snap | quit               snapshot, or stop
 -- Run it with: run.sh -autoboot_script tests/drive.lua, with -mouseprovider none and
 -- -keyboardprovider none so a live window can't disturb it.
 local mem = manager.machine.devices[":maincpu"].spaces["program"]
@@ -31,7 +32,7 @@ emu.register_periodic(function()
 				for _, field in pairs(port.fields) do
 					if field.mask == 1 << (index % 32) then field:set_value(step[2] == "press" and 1 or 0) end
 				end
-			elseif step[2] == "export" then mem:write_u32(0x82104008, 1)
+			elseif step[2] == "export" then mem:write_u32(0x82104008, tonumber(step[3]) or 0)
 			elseif step[2] == "snap" then manager.machine.video:snapshot()
 			elseif step[2] == "quit" then manager.machine:exit() end
 		end

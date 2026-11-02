@@ -149,7 +149,8 @@ extern "C" void *SDL_GetKeyboardFocus();
 
 // The menu bar is the one control that's always there, since MAME's own menu shares a key with ERASE.
 // This is the only Objective-C in the driver, so it goes through the runtime and stays a .cpp file.
-static bool s_export_requested = false;
+enum class export_request { NONE, NATIVE, SQUARE };
+static export_request s_export_requested = export_request::NONE;
 
 template <typename R = id, typename... Args>
 static R objc(id target, char const *selector, Args... args)
@@ -160,7 +161,8 @@ static R objc(id target, char const *selector, Args... args)
 static id ns_class(char const *name) { return reinterpret_cast<id>(objc_getClass(name)); }
 static id ns_string(char const *text) { return objc(ns_class("NSString"), "stringWithUTF8String:", text); }
 
-static void export_menu_action(id, SEL, id) { s_export_requested = true; }
+static void export_native_action(id, SEL, id) { s_export_requested = export_request::NATIVE; }
+static void export_square_action(id, SEL, id) { s_export_requested = export_request::SQUARE; }
 
 // Headless runs have no menu bar, so this does nothing there
 static void add_export_menu()
@@ -172,16 +174,21 @@ static void add_export_menu()
 	Class target_class = objc_allocateClassPair(objc_getClass("NSObject"), "MaxineExportTarget", 0);
 	if (!target_class)
 		return;
-	class_addMethod(target_class, sel_registerName("export:"), reinterpret_cast<IMP>(export_menu_action), "v@:@");
+	class_addMethod(target_class, sel_registerName("exportNative:"), reinterpret_cast<IMP>(export_native_action), "v@:@");
+	class_addMethod(target_class, sel_registerName("exportSquare:"), reinterpret_cast<IMP>(export_square_action), "v@:@");
 	objc_registerClassPair(target_class);
 	id const target = objc(objc(reinterpret_cast<id>(target_class), "alloc"), "init");
 
-	id const item = objc(objc(ns_class("NSMenuItem"), "alloc"), "initWithTitle:action:keyEquivalent:",
-			ns_string("Video and Key"), sel_registerName("export:"), ns_string("e"));
-	objc<void>(item, "setTarget:", target);
-
 	id const menu = objc(objc(ns_class("NSMenu"), "alloc"), "initWithTitle:", ns_string("Export"));
-	objc<void>(menu, "addItem:", item);
+	auto const add_item = [&] (char const *title, char const *action, char const *key)
+	{
+		id const item = objc(objc(ns_class("NSMenuItem"), "alloc"), "initWithTitle:action:keyEquivalent:",
+				ns_string(title), sel_registerName(action), ns_string(key));
+		objc<void>(item, "setTarget:", target);
+		objc<void>(menu, "addItem:", item);
+	};
+	add_item("Native Size (720x486)", "exportNative:", "e");
+	add_item("Square Pixel (640x480)", "exportSquare:", "E"); // a capital adds Shift
 
 	id const heading = objc(objc(ns_class("NSMenuItem"), "alloc"), "init");
 	objc<void>(heading, "setTitle:", ns_string("Export"));
@@ -281,7 +288,7 @@ private:
 	void update_mouse();
 	int active_shift() const;
 	void panel_key(uint16_t code);
-	void export_outputs(std::string const &folder = std::string());
+	void export_outputs(bool square, std::string const &folder = std::string());
 	void write_snapshot(std::string const &filename, bitmap_rgb32 const &bitmap);
 	void write_file(std::string const &path, bitmap_rgb32 const &bitmap);
 
@@ -595,18 +602,19 @@ TIMER_CALLBACK_MEMBER(maxine_state::field_tick)
 		add_export_menu();
 		m_export_menu_added = true;
 	}
-	if (s_export_requested)
+	if (s_export_requested != export_request::NONE)
 	{
-		s_export_requested = false;
+		bool const square = s_export_requested == export_request::SQUARE;
+		s_export_requested = export_request::NONE;
 		std::string const folder = choose_export_folder();
 		if (!folder.empty())
-			export_outputs(folder);
+			export_outputs(square, folder);
 	}
 #endif
 
 	bool const export_pressed = m_export->read() != 0;
 	if (export_pressed && !m_export_held)
-		export_outputs();
+		export_outputs(m_host_shift->read() != 0);
 	m_export_held = export_pressed;
 
 	uint32_t const held = m_host_hold->read();
@@ -652,7 +660,6 @@ TIMER_CALLBACK_MEMBER(maxine_state::field_tick)
 
 // One byte per key press at 9600 8E1 into DUART channel A. The real keyboard is an 8052 on
 // an RS-485 pair. The codes above $7f are the MAXINE function keys; see docs/hardware-map.md.
-// Saves the clean Video and Key outputs to the snapshot folder as a matching pair
 // NTSC pixels are 0.9 as wide as tall, so each pixel here covers 10/9 of one there. Only the width
 // changes, so the lines stay as they are.
 static void square_pixels(bitmap_rgb32 const &src, bitmap_rgb32 &dest)
@@ -671,36 +678,60 @@ static void square_pixels(bitmap_rgb32 const &src, bitmap_rgb32 &dest)
 		}
 }
 
-void maxine_state::export_outputs(std::string const &folder)
+// Takes the middle of a picture, without resampling it again
+static void crop_centre(bitmap_rgb32 const &src, bitmap_rgb32 &dest)
 {
-	bitmap_rgb32 video(720, 486), key(720, 486), video_square(648, 486), key_square(648, 486);
+	int const left = (src.width() - dest.width()) / 2;
+	int const top = (src.height() - dest.height()) / 2;
+	for (int y = 0; y < dest.height(); y++)
+		for (int x = 0; x < dest.width(); x++)
+			dest.pix(y, x) = src.pix(y + top, x + left);
+}
+
+// Saves the clean Video and Key outputs as a matching pair: to the snapshot folder without a folder given,
+// and either at 720x486 or as 640x480 square pixels, which is 648x486 less 4 columns and 3 lines each side
+void maxine_state::export_outputs(bool square, std::string const &folder)
+{
+	bitmap_rgb32 video(720, 486), key(720, 486);
 	m_fb->render_video(video, video.cliprect());
 	m_fb->render_key(key, key.cliprect());
-	square_pixels(video, video_square);
-	square_pixels(key, key_square);
 
-	if (folder.empty())
+	std::string const suffix = square ? "-640x480.png" : ".png";
+	auto const save = [&] (bitmap_rgb32 const &video_out, bitmap_rgb32 const &key_out)
 	{
-		std::string const number = util::string_format("%04u", m_export_count++);
-		write_snapshot("maxine/video-" + number + ".png", video);
-		write_snapshot("maxine/key-" + number + ".png", key);
-		write_snapshot("maxine/video-" + number + "-square.png", video_square);
-		write_snapshot("maxine/key-" + number + "-square.png", key_square);
+		if (folder.empty())
+		{
+			std::string const number = util::string_format("%04u", m_export_count++);
+			write_snapshot("maxine/video-" + number + suffix, video_out);
+			write_snapshot("maxine/key-" + number + suffix, key_out);
+			logerror("Saved video-%s%s and key-%s%s in snap/maxine\n", number, suffix, number, suffix);
+			return;
+		}
+
+		// The next number free for both, so nothing in the folder gets replaced
+		std::filesystem::path const base(folder);
+		unsigned count = 0;
+		std::string number;
+		do
+			number = util::string_format("-%04u", count++);
+		while (std::filesystem::exists(base / ("video" + number + suffix)) || std::filesystem::exists(base / ("key" + number + suffix)));
+
+		write_file((base / ("video" + number + suffix)).string(), video_out);
+		write_file((base / ("key" + number + suffix)).string(), key_out);
+	};
+
+	if (!square)
+	{
+		save(video, key);
 		return;
 	}
 
-	// The next number free for both, so nothing in the folder gets replaced
-	std::filesystem::path const base(folder);
-	unsigned count = 0;
-	std::string number;
-	do
-		number = util::string_format("-%04u", count++);
-	while (std::filesystem::exists(base / ("video" + number + ".png")) || std::filesystem::exists(base / ("key" + number + ".png")));
-
-	write_file((base / ("video" + number + ".png")).string(), video);
-	write_file((base / ("key" + number + ".png")).string(), key);
-	write_file((base / ("video" + number + "-square.png")).string(), video_square);
-	write_file((base / ("key" + number + "-square.png")).string(), key_square);
+	bitmap_rgb32 narrowed(648, 486), video_cropped(640, 480), key_cropped(640, 480);
+	square_pixels(video, narrowed);
+	crop_centre(narrowed, video_cropped);
+	square_pixels(key, narrowed);
+	crop_centre(narrowed, key_cropped);
+	save(video_cropped, key_cropped);
 }
 
 void maxine_state::write_snapshot(std::string const &filename, bitmap_rgb32 const &bitmap)
@@ -784,7 +815,15 @@ void maxine_state::panel_key(uint16_t code)
 {
 	static constexpr uint8_t SHIFT_BASE[] = { 0x88, 0x84, 0x80 }; // CHAR, PAGE, ROW
 
-	if (code == 0x103)
+	if (code == 0x104 || code == 0x105) // the export buttons
+	{
+#if defined(__APPLE__)
+		s_export_requested = code == 0x105 ? export_request::SQUARE : export_request::NATIVE;
+#else
+		export_outputs(code == 0x105);
+#endif
+	}
+	else if (code == 0x103)
 	{
 		m_tablet_mode = !m_tablet_mode;
 		m_cursor_home = CURSOR_HOME_MOVES;
@@ -1169,7 +1208,7 @@ void maxine_state::maxine_mem(address_map &map)
 	// Not on the board: lets test scripts inject input
 	map(0x82104000, 0x82104000).w(FUNC(maxine_state::key_w));
 	map(0x82104004, 0x82104007).lw32(NAME([this] (uint32_t data) { mouse_move(int8_t(data >> 24), int8_t(data >> 16), BIT(data, 0, 2)); }));
-	map(0x82104008, 0x8210400b).lw32(NAME([this] (uint32_t data) { export_outputs(); }));
+	map(0x82104008, 0x8210400b).lw32(NAME([this] (uint32_t data) { export_outputs(BIT(data, 0)); }));
 	map(0x8210400c, 0x8210400f).lw32(NAME([this] (uint32_t data) { pointer_w(data); }));
 	map(0x82104010, 0x82104010).lw8(NAME([this] (uint8_t data) { paste_text(std::string(1, char(data))); }));
 	map(0x82104014, 0x82104017).lw32(NAME([this] (uint32_t data) { tablet_frame(BIT(data, 16, 12), BIT(data, 0, 12), BIT(data, 28, 4) == 15 ? 99 : BIT(data, 28, 4)); }));

@@ -1,0 +1,12 @@
+diff --git a/src/osd/modules/netdev/pcap.cpp b/src/osd/modules/netdev/pcap.cpp
+index ce8d668b..b198d480 100644
+--- a/src/osd/modules/netdev/pcap.cpp
++++ b/src/osd/modules/netdev/pcap.cpp
+@@ -230,7 +230,6 @@ int pcap_module::netdev_pcap::send(void const *buf, int len)
+ 		return 0;
+ 	}
+ 	int ret = (*m_module.pcap_sendpacket_dl)(m_p, reinterpret_cast<const u_char *>(buf), len);
+-	printf("sent packet length %d, returned %d\n", len, ret);
+ 	return !ret ? len : 0;
+ }
+ 

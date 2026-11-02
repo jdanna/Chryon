@@ -30,7 +30,7 @@ when it's on the unit.
 
 ## Get the app
 
-[Download the latest release](https://github.com/jdanna/Chryon/releases/latest) for Mac,
+[Download the latest release](https://github.com/jdanna/MaxineStudio/releases/latest) for Mac,
 Windows or Linux. Builds aren't signed, so your system may warn you or refuse to open
 the app at first.
 

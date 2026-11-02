@@ -83,8 +83,8 @@ Module `Telnet ver 11.00`, image offset `0x11efc08`. Present in 10.10 as well (`
 ### `TELNETD.CFG` (firmware)
 
 Read at `TELD` start from `<drive>/SYSTEM/ETC/TELNETD.CFG`, or `<drive>/<dir>/ETC/TELNETD.CFG`.
-It isn't in the disk image or on the unit, so the syntax comes from the parser, and this hasn't
-been tried. It's plain text with `[section]` headers, `key=value` lines, and `#` comments.
+It isn't in the disk image or on the unit, so the syntax comes from the parser. An `[allow]` rule has been
+tried on the emulator, see the plan below. It's plain text with `[section]` headers, `key=value` lines, and `#` comments.
 Section and key names ignore case.
 
 ```
@@ -117,6 +117,50 @@ vpn=<vpn-client-ip>
   prompt enabled` or `disabled`. The same menu has **FTP Reset**, which reports `FTP server
   has been reset.` That may help after an FTP hang; it hasn't been tried.
 - Not checked: whether the server sends telnet IAC negotiation. A client should expect it.
+
+### Plan for MAXINE! Studio remote control
+
+Not built yet. This is what Studio needs to reach the Intelligent Interface over telnet. Test against the emulator
+first (`emulator/net-up.sh`, unit at 10.37.0.2), and ask before writing to a real unit.
+
+Tested on the emulator on 2026-11-02:
+
+- With no `/SYSTEM/ETC/TELNETD.CFG`, port 23 accepted the TCP connection and closed it straight away with no
+  data, from 10.37.0.1 to a unit at 10.37.0.2. The subnet check above suggests that client should have passed, so
+  why it closed isn't known. Adding the file fixed it. A client should treat this close as "not allowed or not
+  set up" rather than a network failure.
+- FTP can install the file. `CWD /SYSTEM/ETC` then `STOR TELNETD.CFG` worked with Unix line endings, in active
+  mode like every other transfer. The server reads it at boot, so the unit has to reboot afterwards.
+- With this file and `host=10.37.0.1`, the server accepted the connection and sent `ff fd 18`, telnet's `IAC DO
+  TERMINAL-TYPE`. So it does negotiate, and the open question under Login is answered:
+
+```ini
+[options]
+MAXSESSIONS=2
+BANNER=Welcome to Chyron Intelligent Interface.
+
+[users]
+chyron=chyron
+
+[allow]
+host=10.37.0.1
+
+[forbid]
+```
+
+Still untested: answering the negotiation, logging in, and any II command. A raw socket that ignored `ff fd 18`
+got nothing further, so Studio's client must reply to IAC options before expecting `login: `.
+
+What Studio needs:
+
+1. A telnet client that handles IAC negotiation. Answering `IAC WONT` to each `DO` is the likely minimum.
+2. A setup step that reads `/SYSTEM/ETC/TELNETD.CFG` if there is one, adds this computer's address to `[allow]`
+   rather than replacing the file, uploads it, and tells the operator to reboot. Show the operator what will
+   change first.
+3. Either credentials in the app, or the operator turning on **Tel No Login**, which skips the login. Passwords in
+   this file are plain text on a unit that serves FTP to anyone, so never reuse a real one.
+4. The source address the unit sees has to be the one in `[allow]`. A client over a VPN needs its VPN address or
+   a NAT on the unit's subnet, which is why telnet closes on the real unit today.
 
 ## II protocol
 

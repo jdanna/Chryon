@@ -283,6 +283,8 @@ npm run dist:mac | dist:win | dist:linux | release     # unsigned installers
   limits. Which setting matters isn't known, because they all changed together, so
   change one at a time if lowering them. Reads have never hung it: 8 `LIST`/`NLST` in
   one quick run were fine.
+- Remote control isn't built. "Plan for MAXINE! Studio remote control" in `docs/remote-control-research.md` has the
+  telnet setup it needs, including the `TELNETD.CFG` allow rule, tested on the emulator.
 - Every command, reply and 64 KB of progress is appended, with timestamps, to
   `<system temp>/MAXINE Studio/ftp-trace.log`. After a hang, read that first.
 - Login lands in `0.0/MAXINE`. Fonts are in `/MAXINE/MACHINE`, the only folder the app
@@ -319,7 +321,7 @@ python3 tools/phile.py ls emulator/roms/maxine-v11.01.img /SYSTEM/PROGRAMS
 - **Status 2026-11-02:** boots on a stub to the real Program Loader and Message Compose. Working:
   keyboard and mouse, 64 MB expansion RAM, font load, typing in colour, messages saved to and read
   from disk, the frame buffer (`chyronfb.cpp`), Prompts and Color Edit screens, Video and Key export.
-  Not working: roll and crawl playout, networking. `emulator/README.md` lists the gaps.
+  Not working: roll and crawl playout. `emulator/README.md` lists the gaps.
 - The machine has four outputs: Prompts, Color Edit, Video, Key. The window shows the first two, and
   Right Ctrl exports the others. Video and Key must stay clean of overlays.
 - `artwork/make_layout.py` is the single key list, and generates the layout and `maxine_keys.h`. The
@@ -334,6 +336,12 @@ python3 tools/phile.py ls emulator/roms/maxine-v11.01.img /SYSTEM/PROGRAMS
 - The frame buffer's data port takes font file records directly, so `tools/maxine_font.py` is a good
   oracle for it.
 - **It's an MVME162, not a 167.** Earlier notes in the repo history said 167.
+- Networking: `net-up.sh` (root, once per reboot) makes a `feth0`/`feth1` pair and opens `/dev/bpf*`. The driver
+  attaches to `feth0` through MAME's pcap backend whenever it exists. macOS has no tap, and MAME's taptun isn't
+  built here. `patches/*.patch` are applied to the MAME checkout by `build.sh`.
+  Confirmed 2026-11-02 from the Mac at 10.37.0.1: ping, FTP in active mode, a 251 KB font read back byte-identical,
+  STOR and DELE. The 82596's blocks can sit on 2-byte boundaries, so the patch makes its dword access unaligned.
+  Scripted runs can now reach the host: cap their log with `ulimit -f`, because a stuck chip wrote 11 GB in minutes.
 - There's no boot PROM dump. `boot_stub()` in `maxine.cpp` loads `PSOS` at `$3000` and starts it
   through the reset vectors, which is meant to stay as a supported path.
 - Driver-local devices go in `emulator/src/mame/chyron/`, and `build.sh` picks up new `.cpp` files.

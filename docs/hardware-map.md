@@ -42,6 +42,10 @@ Other CPU facts (**fw**):
 | `$FFF47000` | 53C710 SCSI | man, fw |
 | `$FFFC0000`–`$FFFCFFFF` | MK48T08 BBRAM and clock, 8 KB repeated | man, fw |
 
+`emulator/patches/i82586-mvme162.patch` keeps frame data, the configure block and addresses in memory order,
+pads and checksums received frames, which MAME's host backends deliver without an FCS, and makes dword access
+unaligned, because the LAN driver's command blocks can sit on 2-byte boundaries.
+
 **82596 byte order (fw, Linux driver):** 16-bit fields read normally, 32-bit pointers are low word
 first. `SCP` is at `$2f6e0`, sysbus `$44`. The emulator treats it as a little-endian chip with each
 long's words swapped. Frame data doesn't go through that swap on the real board, which isn't handled.
@@ -258,7 +262,13 @@ line prints `site.subscript`. A key has to match the system type (4 is Maxine!, 
 the first two characters of the disk version, the site and the subscript. Enter accepts a key and shows
 what it enables, and CNTL then X writes that to the drive. Typing X without CNTL goes into the key field.
 Writing moves the enabled programs from `/SYSTEM/UNPURCH` to `/SYSTEM/PROGRAMS`, so Startup loads them at
-the next boot. The IP address isn't in NVRAM: Setup, Network keeps it in `/SYSTEM/ETC/NET_CONF` on the disk.
+the next boot.
+
+Network settings are in NVRAM, from Setup's Network screen: the low three Ethernet address bytes at `$779`,
+then the Internet address at `$77c`, subnet mask at `$780` and default gateway at `$784`. Fields append to their
+text, so clear them with Backspace, and move between them with the arrow keys. The LAN driver reads its full
+address from `$1f2c`, where the boot PROM would have put it, so the driver builds that at reset as `08:00:3e`
+plus the bytes at `$779`. It also seeds 10.37.0.2/24 with gateway 10.37.0.1 while `$77c` is zero.
 
 ## Sources
 

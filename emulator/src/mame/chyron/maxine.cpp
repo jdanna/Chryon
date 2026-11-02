@@ -11,7 +11,7 @@
     There is no boot PROM dump yet, so the machine starts by loading
     /SYSTEM/PROGRAMS/PSOS straight off the pHILE volume on SCSI ID 0.
 
-    See docs/hardware-map.md in the Chryon repository.
+    See docs/hardware-map.md in the MaxineStudio repository.
 
 ***************************************************************************/
 
@@ -38,6 +38,7 @@
 #include "speaker.h"
 
 #include "modules/lib/osdlib.h"
+#include "osdepend.h"
 
 #include <filesystem>
 
@@ -1222,6 +1223,25 @@ void maxine_state::boot_stub()
 		return;
 	}
 
+	// Until Setup has set one, the network matches emulator/net-up.sh: address, mask and gateway
+	static constexpr uint8_t NETWORK[] = { 10, 37, 0, 2, 255, 255, 255, 0, 10, 37, 0, 1 };
+	if (!m_nvram->read(0x77c))
+	{
+		static constexpr uint8_t ETHERNET[] = { 0x12, 0x34, 0x56 };
+		for (int i = 0; i < 3; i++)
+			m_nvram->write(0x779 + i, ETHERNET[i]);
+		for (int i = 0; i < std::size(NETWORK); i++)
+			m_nvram->write(0x77c + i, NETWORK[i]);
+	}
+
+	// The boot PROM keeps the Ethernet address at $1f2c. Setup only stores the low three bytes, at $779.
+	static constexpr uint8_t MOTOROLA_OUI[] = { 0x08, 0x00, 0x3e };
+	for (int i = 0; i < 3; i++)
+	{
+		m_nvram->write(0x1f2c + i, MOTOROLA_OUI[i]);
+		m_nvram->write(0x1f2f + i, m_nvram->read(0x779 + i));
+	}
+
 	// The CPU takes its reset vectors on its first cycle, so these are what start PSOS.
 	address_space &space = m_maincpu->space(AS_PROGRAM);
 	space.write_dword(0, PSOS_BASE);
@@ -1241,6 +1261,11 @@ void maxine_state::machine_start()
 
 void maxine_state::machine_reset()
 {
+	// emulator/net-up.sh's virtual Ethernet, if it's there. This comes after MAME's saved settings.
+	for (auto const &device : machine().osd().list_network_devices())
+		if (device.description == "feth0" && m_lan->get_interface() != device.id)
+			m_lan->set_interface(device.id);
+
 	boot_stub();
 }
 
@@ -1325,6 +1350,8 @@ void maxine_state::maxine(machine_config &config)
 
 	I82596_LE32(config, m_lan, 25_MHz_XTAL);
 	m_lan->set_addrmap(0, &maxine_state::lan_mem);
+	m_lan->set_swap_data(true);
+	m_lan->set_add_fcs(true);
 	m_lan->out_irq_cb().set(m_mcc, FUNC(mcchip_device::lan_irq_w));
 	MC68681(config, m_keyboard_duart, 3.6864_MHz_XTAL);
 	m_keyboard_duart->irq_cb().set(FUNC(maxine_state::keyboard_irq_w));

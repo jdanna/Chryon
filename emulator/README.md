@@ -1,4 +1,4 @@
-# MAXINE! emulator
+# MAXINE! Studio Emulator
 
 ![The emulator running Message Compose](../docs/emulator.png)
 
@@ -65,6 +65,23 @@ crosshair on Color Edit and the arrow on Prompts, so keep your pointer over the 
 To draw an outline over Color Edit, press O, Return, Right arrow, Return, then P at each point and O to
 close it. Press `?` in Logo Compose for the other keys.
 
+### Network
+
+On a Mac, run this once after each reboot. It needs your password.
+
+```bash
+sudo emulator/net-up.sh
+```
+
+It creates a virtual Ethernet pair and gives your Mac 10.37.0.1. Start the emulator and the MAXINE is at
+10.37.0.2. Its disk needs the Networking option, which the default disk has. Change the MAXINE's address in
+the Loader's Setup, under Network.
+
+FTP takes any login and works in active mode only, as on the real unit. Fonts are in `/MAXINE/MACHINE`.
+
+Telnet closes the connection until `/SYSTEM/ETC/TELNETD.CFG` allows your Mac, which takes effect on the next
+reboot of the emulator. Upload it over FTP. See `docs/remote-control-research.md` for the format.
+
 ### Export
 
 On a Mac, use Export > Video and Key in the menu bar, or Command-E, and choose a folder. Right Ctrl saves to
@@ -74,7 +91,8 @@ at 648×486 for square-pixel tools.
 ## Limitations
 
 - Only tested on macOS.
-- Networking doesn't work.
+- Networking is only set up for macOS, and the Mac can only reach the MAXINE, not the other way round to the
+  wider network. Telnet login and the Intelligent Interface haven't been tested past connecting.
 - No boot PROM dump: the driver loads the operating system from disk itself.
 - The edge colour, Prompts palette, Logo Compose outline colour and 50 MHz CPU speed are guesses.
 - The clock and date can read wrongly.

@@ -12,6 +12,11 @@ MAME=$HERE/mame
 mkdir -p "$MAME/src/mame/chyron"
 cp "$HERE"/src/mame/chyron/* "$MAME/src/mame/chyron/"
 
+# The MVME162's 82596 needs byte order and framing MAME doesn't have
+for PATCH in "$HERE"/patches/*.patch; do
+    git -C "$MAME" apply --reverse --check "$PATCH" 2>/dev/null || git -C "$MAME" apply "$PATCH"
+done
+
 if ! grep -q '@source:chyron/maxine.cpp' "$MAME/src/mame/mame.lst"; then
     printf '\n@source:chyron/maxine.cpp\nmaxine\n' >> "$MAME/src/mame/mame.lst"
 fi
@@ -19,13 +24,14 @@ fi
 cd "$MAME"
 
 SOURCES=$(cd src/mame && ls chyron/*.cpp | paste -sd , -)
+BUILD_KEY="$SOURCES pcap"
 REGENIE=0
-if [ "$SOURCES" != "$(cat .maxine-sources 2>/dev/null)" ]; then
+if [ "$BUILD_KEY" != "$(cat .maxine-sources 2>/dev/null)" ]; then
     REGENIE=1
-    echo "$SOURCES" > .maxine-sources
+    echo "$BUILD_KEY" > .maxine-sources
 fi
 
 make -j"$(sysctl -n hw.ncpu)" \
     SUBTARGET=maxine SOURCES="$SOURCES" REGENIE=$REGENIE \
-    USE_LIBSDL=1 NOWERROR=1 PTR64=1 \
+    USE_LIBSDL=1 USE_PCAP=1 NOWERROR=1 PTR64=1 \
     TOOLS=1 "$@"

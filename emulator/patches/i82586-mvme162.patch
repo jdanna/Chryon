@@ -1,0 +1,508 @@
+diff --git a/src/devices/machine/i82586.cpp b/src/devices/machine/i82586.cpp
+index 6c5f3be3..6db721de 100644
+--- a/src/devices/machine/i82586.cpp
++++ b/src/devices/machine/i82586.cpp
+@@ -252,6 +252,17 @@ int i82586_base_device::recv_start_cb(u8 *buf, int length)
+ 		break;
+ 
+ 	case RU_READY:
++		if (m_add_fcs && length <= MAX_FRAME_SIZE - 4)
++		{
++			u8 frame[MAX_FRAME_SIZE];
++			int const padded = std::max(length, 60);
++
++			memset(frame, 0, padded);
++			memcpy(frame, buf, length);
++			put_u32le(&frame[padded], compute_crc(frame, padded, cfg_crc16()));
++
++			return recv_start(frame, padded + 4);
++		}
+ 		return recv_start(buf, length);
+ 
+ 	default:
+@@ -287,7 +298,7 @@ void i82586_base_device::recv_complete_cb(int result)
+ void i82586_base_device::process_scb()
+ {
+ 	// fetch current command and status
+-	m_scb_cs = m_space->read_dword(m_scb_address);
++	m_scb_cs = m_space->read_dword_unaligned(m_scb_address);
+ 
+ 	// handle reset
+ 	if (m_scb_cs & RESET)
+@@ -408,11 +419,11 @@ void i82586_base_device::update_scb()
+ TIMER_CALLBACK_MEMBER(i82586_base_device::cu_execute)
+ {
+ 	// fetch the command block command/status
+-	const u32 cb_cs = m_space->read_dword(m_cba);
++	const u32 cb_cs = m_space->read_dword_unaligned(m_cba);
+ 	u16 status = 0;
+ 
+ 	// set busy status
+-	m_space->write_dword(m_cba, cb_cs | CB_B);
++	m_space->write_dword_unaligned(m_cba, cb_cs | CB_B);
+ 
+ 	static const char *const CMD_NAME[] = { "NOP", "INDIVIDUAL ADDRESS SETUP", "CONFIGURE", "MULTICAST SETUP", "TRANSMIT", "TIME DOMAIN REFLECTOMETER", "DUMP", "DIAGNOSE" };
+ 	LOG("cu_execute command 0x%08x (%s)\n", cb_cs, CMD_NAME[(cb_cs & CB_CMD) >> 16]);
+@@ -472,8 +483,8 @@ TIMER_CALLBACK_MEMBER(i82586_base_device::cu_execute)
+ void i82586_base_device::cu_complete(const u16 status)
+ {
+ 	// clear busy status and set completion status
+-	const u32 cb_cs = m_space->read_dword(m_cba);
+-	m_space->write_dword(m_cba, (cb_cs & ~0xffffU) | CB_C | status);
++	const u32 cb_cs = m_space->read_dword_unaligned(m_cba);
++	m_space->write_dword_unaligned(m_cba, (cb_cs & ~0xffffU) | CB_C | status);
+ 
+ 	// chain to next command
+ 	if (!(cb_cs & CB_EL))
+@@ -598,6 +609,13 @@ int i82586_base_device::fetch_bytes(u8 *buf, u32 src, int length)
+ {
+ 	int offset = 0;
+ 
++	if (m_swap_data)
++	{
++		for (; offset < length; offset++)
++			buf[offset] = m_space->read_byte((src + offset) ^ 1);
++		return length;
++	}
++
+ 	switch (m_space->data_width())
+ 	{
+ 	case 16:
+@@ -628,7 +646,7 @@ int i82586_base_device::fetch_bytes(u8 *buf, u32 src, int length)
+ 		switch (src & 3)
+ 		{
+ 		case 1:
+-			put_u24le(&buf[offset], m_space->read_dword(src + offset, 0xffffff));
++			put_u24le(&buf[offset], m_space->read_dword_unaligned(src + offset, 0xffffff));
+ 			offset += 3;
+ 			break;
+ 
+@@ -646,7 +664,7 @@ int i82586_base_device::fetch_bytes(u8 *buf, u32 src, int length)
+ 		// fetch aligned dwords from the source
+ 		while (offset + 3 < length)
+ 		{
+-			put_u32le(&buf[offset], m_space->read_dword(src + offset));
++			put_u32le(&buf[offset], m_space->read_dword_unaligned(src + offset));
+ 			offset += 4;
+ 		}
+ 
+@@ -664,7 +682,7 @@ int i82586_base_device::fetch_bytes(u8 *buf, u32 src, int length)
+ 			break;
+ 
+ 		case 3:
+-			put_u24le(&buf[offset], m_space->read_dword(src + offset, 0xffffff));
++			put_u24le(&buf[offset], m_space->read_dword_unaligned(src + offset, 0xffffff));
+ 			offset += 3;
+ 			break;
+ 		}
+@@ -678,6 +696,13 @@ int i82586_base_device::store_bytes(u32 dst, u8 *buf, int length)
+ {
+ 	int offset = 0;
+ 
++	if (m_swap_data)
++	{
++		for (; offset < length; offset++)
++			m_space->write_byte((dst + offset) ^ 1, buf[offset]);
++		return length;
++	}
++
+ 	switch (m_space->data_width())
+ 	{
+ 	case 16:
+@@ -708,7 +733,7 @@ int i82586_base_device::store_bytes(u32 dst, u8 *buf, int length)
+ 		switch (dst & 3)
+ 		{
+ 		case 1:
+-			m_space->write_dword(dst + offset, get_u24le(&buf[offset]), 0xffffff);
++			m_space->write_dword_unaligned(dst + offset, get_u24le(&buf[offset]), 0xffffff);
+ 			offset += 3;
+ 			break;
+ 
+@@ -726,7 +751,7 @@ int i82586_base_device::store_bytes(u32 dst, u8 *buf, int length)
+ 		// store aligned dwords to the destination
+ 		while (offset + 3 < length)
+ 		{
+-			m_space->write_dword(dst + offset, get_u32le(&buf[offset]));
++			m_space->write_dword_unaligned(dst + offset, get_u32le(&buf[offset]));
+ 			offset += 4;
+ 		}
+ 
+@@ -744,7 +769,7 @@ int i82586_base_device::store_bytes(u32 dst, u8 *buf, int length)
+ 			break;
+ 
+ 		case 3:
+-			m_space->write_dword(dst + offset, get_u24le(&buf[offset]), 0xffffff);
++			m_space->write_dword_unaligned(dst + offset, get_u24le(&buf[offset]), 0xffffff);
+ 			offset += 3;
+ 			break;
+ 		}
+@@ -780,12 +805,12 @@ void i82586_device::initialise()
+ 	}
+ 
+ 	// read iscp address from scp
+-	u32 iscp_address = m_space->read_dword(m_scp_address + 8);
++	u32 iscp_address = m_space->read_dword_unaligned(m_scp_address + 8);
+ 	LOG("initialise iscp address 0x%08x\n", iscp_address);
+ 
+ 	u16 scb_offset = m_space->read_word(iscp_address + 2);
+ 
+-	m_scb_base = m_space->read_dword(iscp_address + 4);
++	m_scb_base = m_space->read_dword_unaligned(iscp_address + 4);
+ 	m_scb_address = m_scb_base + scb_offset;
+ 	LOG("initialise scb base address 0x%06x offset 0x%04x address 0x%08x\n", m_scb_base, scb_offset, m_scb_address);
+ 
+@@ -815,10 +840,10 @@ bool i82586_device::cu_iasetup()
+ 		return false;
+ 	}
+ 
+-	data = m_space->read_dword(m_cba + 4);
++	data = m_space->read_dword_unaligned(m_cba + 4);
+ 	put_u16le(&mac[0], data >> 16);
+ 
+-	data = m_space->read_dword(m_cba + 8);
++	data = m_space->read_dword_unaligned(m_cba + 8);
+ 	put_u32le(&mac[2], data);
+ 
+ 	LOG("cu_iasetup individual address %02x:%02x:%02x:%02x:%02x:%02x\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+@@ -938,11 +963,11 @@ bool i82586_device::cu_transmit(u32 command)
+ 		u32 data;
+ 
+ 		// insert destination address (6 bytes)
+-		data = m_space->read_dword(m_cba + 8);
++		data = m_space->read_dword_unaligned(m_cba + 8);
+ 		put_u32le(&buf[length], data);
+ 		length += 4;
+ 
+-		data = m_space->read_dword(m_cba + 12);
++		data = m_space->read_dword_unaligned(m_cba + 12);
+ 		put_u16le(&buf[length], data & 0xffff);
+ 		length += 2;
+ 
+@@ -967,11 +992,11 @@ bool i82586_device::cu_transmit(u32 command)
+ 		u32 tb_address, data;
+ 
+ 		// get the size and address of this buffer, and address of the next descriptor
+-		data = m_space->read_dword(tbd_address + 0);
++		data = m_space->read_dword_unaligned(tbd_address + 0);
+ 		tbd_count = (data >> 0) & 0xffff;
+ 		tbd_offset = (data >> 16) & 0xffff;
+ 
+-		tb_address = m_space->read_dword(tbd_address + 4);
++		tb_address = m_space->read_dword_unaligned(tbd_address + 4);
+ 
+ 		LOG("cu_transmit inserting %d bytes from transmit buffer address 0x%08x\n", tbd_count & TB_COUNT, tb_address);
+ 		length += fetch_bytes(&buf[length], tb_address, tbd_count & TB_COUNT);
+@@ -1066,14 +1091,14 @@ bool i82586_device::address_filter(u8 *mac)
+ u16 i82586_device::ru_execute(u8 *buf, int length)
+ {
+ 	// fetch receive frame descriptor command/status
+-	u32 rfd_cs = m_space->read_dword(m_rfd);
++	u32 rfd_cs = m_space->read_dword_unaligned(m_rfd);
+ 	u16 status = 0;
+ 
+ 	// current buffer position and bytes remaining (excluding fcs)
+ 	int position = 0, remaining = length - 4;
+ 
+ 	// set busy status
+-	m_space->write_dword(m_rfd, rfd_cs | RFD_B);
++	m_space->write_dword_unaligned(m_rfd, rfd_cs | RFD_B);
+ 
+ 	LOG("ru_execute receiving %d bytes into rfd 0x%08x\n", length, m_rfd);
+ 
+@@ -1116,7 +1141,7 @@ u16 i82586_device::ru_execute(u8 *buf, int length)
+ 	while (remaining && m_rbd_offset != RBD_EMPTY)
+ 	{
+ 		// fetch the count and address for this buffer
+-		u32 rb_address = m_space->read_dword(m_scb_base + m_rbd_offset + 4);
++		u32 rb_address = m_space->read_dword_unaligned(m_scb_base + m_rbd_offset + 4);
+ 		u16 rbd_size = m_space->read_word(m_scb_base + m_rbd_offset + 8);
+ 
+ 		// compute number of bytes to store in buffer
+@@ -1175,8 +1200,8 @@ void i82586_device::ru_complete(const u16 status)
+ 			LOG("ru_complete frame received with errors status 0x%04x\n", status);
+ 
+ 		// update receive frame descriptor status
+-		u32 rfd_cs = m_space->read_dword(m_rfd);
+-		m_space->write_dword(m_rfd, (rfd_cs & ~0xffffU) | status);
++		u32 rfd_cs = m_space->read_dword_unaligned(m_rfd);
++		m_space->write_dword_unaligned(m_rfd, (rfd_cs & ~0xffffU) | status);
+ 
+ 		if (!(rfd_cs & RFD_EL))
+ 		{
+@@ -1273,7 +1298,7 @@ void i82596_device::port(u32 data)
+ void i82596_device::initialise()
+ {
+ 	// read iscp address and sysbus from scp
+-	u32 iscp_address = m_space->read_dword(m_scp_address + 8);
++	u32 iscp_address = m_space->read_dword_unaligned(m_scp_address + 8);
+ 	m_sysbus = m_space->read_byte(m_scp_address + 2);
+ 
+ 	LOG("initialise sysbus 0x%02x mode %s, %s triggering of bus throttle timers, lock function %s, interrupt active %s, 32-bit address pointers in linear mode per %s stepping)\n",
+@@ -1292,14 +1317,14 @@ void i82596_device::initialise()
+ 	{
+ 		u16 scb_offset = m_space->read_word(iscp_address + 2);
+ 
+-		m_scb_base = m_space->read_dword(iscp_address + 4);
++		m_scb_base = m_space->read_dword_unaligned(iscp_address + 4);
+ 		m_scb_address = m_scb_base + scb_offset;
+ 		LOG("initialise scb base address 0x%08x offset 0x%04x address 0x%08x\n", m_scb_base, scb_offset, m_scb_address);
+ 	}
+ 		break;
+ 
+ 	case MODE_LINEAR:
+-		m_scb_address = m_space->read_dword(iscp_address + 4);
++		m_scb_address = m_space->read_dword_unaligned(iscp_address + 4);
+ 		LOG("initialise scb address 0x%08x\n", m_scb_address);
+ 		break;
+ 	}
+@@ -1337,18 +1362,18 @@ bool i82596_device::cu_iasetup()
+ 	{
+ 	case MODE_82586:
+ 	case MODE_32SEGMENTED:
+-		data = m_space->read_dword(m_cba + 4);
++		data = m_space->read_dword_unaligned(m_cba + 4);
+ 		put_u16le(&mac[0], data >> 16);
+ 
+-		data = m_space->read_dword(m_cba + 8);
++		data = m_space->read_dword_unaligned(m_cba + 8);
+ 		put_u32le(&mac[2], data);
+ 		break;
+ 
+ 	case MODE_LINEAR:
+-		data = m_space->read_dword(m_cba + 8);
++		data = data_order(m_space->read_dword_unaligned(m_cba + 8));
+ 		put_u32le(&mac[0], data);
+ 
+-		data = m_space->read_dword(m_cba + 12);
++		data = data_order(m_space->read_dword_unaligned(m_cba + 12));
+ 		put_u16le(&mac[4], data & 0xffff);
+ 		break;
+ 	}
+@@ -1384,7 +1409,7 @@ bool i82596_device::cu_configure()
+ 			switch (i & 3)
+ 			{
+ 			case 2:
+-				data32 = m_space->read_dword(m_cba + 6 + i);
++				data32 = m_space->read_dword_unaligned(m_cba + 6 + i);
+ 				cfg_set(i, (data32 >> 0) & 0xff);
+ 				break;
+ 			case 3: cfg_set(i, (data32 >> 8) & 0xff); break;
+@@ -1411,7 +1436,7 @@ bool i82596_device::cu_configure()
+ 			switch (i & 3)
+ 			{
+ 			case 2:
+-				data32 = m_space->read_dword(m_cba + 6 + i);
++				data32 = m_space->read_dword_unaligned(m_cba + 6 + i);
+ 				cfg_set(i, (data32 >> 0) & 0xff);
+ 				break;
+ 			case 3: cfg_set(i, (data32 >> 8) & 0xff); break;
+@@ -1423,7 +1448,7 @@ bool i82596_device::cu_configure()
+ 
+ 	case MODE_LINEAR:
+ 		// bytes are all dword aligned
+-		data32 = m_space->read_dword(m_cba + 8);
++		data32 = data_order(m_space->read_dword_unaligned(m_cba + 8));
+ 
+ 		cfg_set(0, (data32 >> 0) & 0xff);
+ 		cfg_set(1, (data32 >> 8) & 0xff);
+@@ -1440,7 +1465,7 @@ bool i82596_device::cu_configure()
+ 			switch (i & 3)
+ 			{
+ 			case 0:
+-				data32 = m_space->read_dword(m_cba + 8 + i);
++				data32 = data_order(m_space->read_dword_unaligned(m_cba + 8 + i));
+ 				cfg_set(i, (data32 >> 0) & 0xff);
+ 				break;
+ 
+@@ -1470,7 +1495,7 @@ bool i82596_device::cu_configure()
+ 
+ bool i82596_device::cu_mcsetup()
+ {
+-	u32 data = (mode() == MODE_LINEAR) ? m_space->read_dword(m_cba + 8) : m_space->read_word(m_cba + 6);
++	u32 data = (mode() == MODE_LINEAR) ? m_space->read_dword_unaligned(m_cba + 8) : m_space->read_word(m_cba + 6);
+ 	int mc_count = data & TB_COUNT;
+ 
+ 	// if length less than one address, clear multicast filter and finish
+@@ -1484,11 +1509,12 @@ bool i82596_device::cu_mcsetup()
+ 
+ 	std::vector<u8> buf;
+ 	offs_t offset = m_cba + 8;
++	data = data_order(data);
+ 
+ 	// already have the first two address bytes in linear mode
+ 	if (mode() != MODE_LINEAR)
+ 	{
+-		data = m_space->read_dword(offset);
++		data = m_space->read_dword_unaligned(offset);
+ 
+ 		buf.push_back(data >> 0);
+ 		buf.push_back(data >> 8);
+@@ -1508,7 +1534,7 @@ bool i82596_device::cu_mcsetup()
+ 		// read an address
+ 		while (buf.size() < cfg_address_length())
+ 		{
+-			data = m_space->read_dword(offset);
++			data = data_order(m_space->read_dword_unaligned(offset));
+ 
+ 			buf.push_back(data >> 0);
+ 			buf.push_back(data >> 8);
+@@ -1554,7 +1580,7 @@ bool i82596_device::cu_transmit(u32 command)
+ 		tbd_address = (tbd_offset == TBD_EMPTY) ? tbd_offset : m_scb_base + tbd_offset;
+ 	}
+ 	else
+-		tbd_address = m_space->read_dword(m_cba + 8);
++		tbd_address = m_space->read_dword_unaligned(m_cba + 8);
+ 
+ 	// fetch the tcb count
+ 	tcb_count = (mode() == MODE_82586) ? 0 : m_space->read_word(m_cba + 8 + offset);
+@@ -1575,11 +1601,11 @@ bool i82596_device::cu_transmit(u32 command)
+ 			u32 data;
+ 
+ 			// insert destination address (6 bytes)
+-			data = m_space->read_dword(m_cba + 12 + offset);
++			data = data_order(m_space->read_dword_unaligned(m_cba + 12 + offset));
+ 			put_u32le(&buf[length], data);
+ 			length += 4;
+ 
+-			data = m_space->read_dword(m_cba + 16 + offset);
++			data = data_order(m_space->read_dword_unaligned(m_cba + 16 + offset));
+ 			put_u16le(&buf[length], data & 0xffff);
+ 			length += 2;
+ 
+@@ -1620,18 +1646,18 @@ bool i82596_device::cu_transmit(u32 command)
+ 		{
+ 		case MODE_82586:
+ 		case MODE_32SEGMENTED:
+-			data = m_space->read_dword(tbd_address + 0);
++			data = m_space->read_dword_unaligned(tbd_address + 0);
+ 			tbd_count = data;
+-			tb_address = m_space->read_dword(tbd_address + 4);
++			tb_address = m_space->read_dword_unaligned(tbd_address + 4);
+ 
+ 			tbd_address = m_scb_base + (data >> 16);
+ 			break;
+ 
+ 		case MODE_LINEAR:
+ 			tbd_count = m_space->read_word(tbd_address + 0);
+-			tb_address = m_space->read_dword(tbd_address + 8);
++			tb_address = m_space->read_dword_unaligned(tbd_address + 8);
+ 
+-			tbd_address = m_space->read_dword(tbd_address + 4);
++			tbd_address = m_space->read_dword_unaligned(tbd_address + 4);
+ 			break;
+ 		}
+ 
+@@ -1764,7 +1790,7 @@ bool i82596_device::address_filter(u8 *mac)
+ u16 i82596_device::ru_execute(u8 *buf, int length)
+ {
+ 	// fetch receive frame descriptor command/status
+-	const u32 rfd_cs = m_space->read_dword(m_rfd);
++	const u32 rfd_cs = m_space->read_dword_unaligned(m_rfd);
+ 	u16 status = 0;
+ 
+ 	// offset into rfd/rbd for linear mode
+@@ -1777,7 +1803,7 @@ u16 i82596_device::ru_execute(u8 *buf, int length)
+ 		remaining -= 4;
+ 
+ 	// set busy status
+-	m_space->write_dword(m_rfd, rfd_cs | RFD_B);
++	m_space->write_dword_unaligned(m_rfd, rfd_cs | RFD_B);
+ 
+ 	LOG("ru_execute receiving %d bytes using %s mode into rfd 0x%08x\n",
+ 		remaining, (mode() == MODE_82586 ? "82586" : ((rfd_cs & RFD_SF) ? "flexible" : "simplified")), m_rfd);
+@@ -1791,7 +1817,7 @@ u16 i82596_device::ru_execute(u8 *buf, int length)
+ 
+ 		// increment short frame count
+ 		if (mode() != MODE_82586)
+-			m_space->write_dword(m_scb_address + 28 + linear_offset, m_space->read_dword(m_scb_address + 28 + linear_offset) + 1);
++			m_space->write_dword_unaligned(m_scb_address + 28 + linear_offset, m_space->read_dword_unaligned(m_scb_address + 28 + linear_offset) + 1);
+ 
+ 		status |= RFD_S_SHORT;
+ 	}
+@@ -1806,7 +1832,7 @@ u16 i82596_device::ru_execute(u8 *buf, int length)
+ 		if (mode() == MODE_82586)
+ 			m_space->write_word(m_scb_address + 8, m_space->read_word(m_scb_address + 8) + 1);
+ 		else
+-			m_space->write_dword(m_scb_address + 8 + linear_offset, m_space->read_dword(m_scb_address + 8 + linear_offset) + 1);
++			m_space->write_dword_unaligned(m_scb_address + 8 + linear_offset, m_space->read_dword_unaligned(m_scb_address + 8 + linear_offset) + 1);
+ 
+ 		status |= RFD_S_CRC;
+ 	}
+@@ -1829,7 +1855,7 @@ u16 i82596_device::ru_execute(u8 *buf, int length)
+ 
+ 		// increment "no resources" counter
+ 		if (rfd_size < remaining)
+-			m_space->write_dword(m_scb_address + 16 + linear_offset, m_space->read_dword(m_scb_address + 16 + linear_offset) + 1);
++			m_space->write_dword_unaligned(m_scb_address + 16 + linear_offset, m_space->read_dword_unaligned(m_scb_address + 16 + linear_offset) + 1);
+ 
+ 		// truncate/capture the frame
+ 		if (remaining <= rfd_size || cfg_save_bad_frames())
+@@ -1892,7 +1918,7 @@ u16 i82596_device::ru_execute(u8 *buf, int length)
+ 		while (remaining && m_rbd_address != RBD_EMPTY)
+ 		{
+ 			// fetch the count and address for this buffer
+-			u32 rb_address = m_space->read_dword(m_rbd_address + 4 + linear_offset);
++			u32 rb_address = m_space->read_dword_unaligned(m_rbd_address + 4 + linear_offset);
+ 			u16 rbd_size = m_space->read_word(m_rbd_address + 8 + linear_offset);
+ 
+ 			// compute number of bytes to store in buffer
+@@ -1949,8 +1975,8 @@ void i82596_device::ru_complete(const u16 status)
+ 			LOG("ru_complete frame received with errors status 0x%04x\n", status);
+ 
+ 		// update receive frame descriptor status
+-		const u32 rfd_cs = m_space->read_dword(m_rfd);
+-		m_space->write_dword(m_rfd, (rfd_cs & ~0xffffU) | status);
++		const u32 rfd_cs = m_space->read_dword_unaligned(m_rfd);
++		m_space->write_dword_unaligned(m_rfd, (rfd_cs & ~0xffffU) | status);
+ 
+ 		if (!(rfd_cs & RFD_EL))
+ 		{
+@@ -1961,7 +1987,7 @@ void i82596_device::ru_complete(const u16 status)
+ 			if (m_rbd_address != RBD_EMPTY)
+ 			{
+ 				if (mode() == MODE_LINEAR)
+-					m_space->write_dword(m_rfd + 8, m_rbd_address);
++					m_space->write_dword_unaligned(m_rfd + 8, m_rbd_address);
+ 				else
+ 					m_space->write_word(m_rfd + 6, m_rbd_address - m_scb_base);
+ 			}
+@@ -1998,5 +2024,5 @@ u32 i82596_device::address(u32 base, int offset, int address, u16 empty)
+ 		return (data == empty) ? empty : m_scb_base + data;
+ 	}
+ 	else
+-		return m_space->read_dword(base + address);
++		return m_space->read_dword_unaligned(base + address);
+ }
+diff --git a/src/devices/machine/i82586.h b/src/devices/machine/i82586.h
+index 81d352aa..4ce22260 100644
+--- a/src/devices/machine/i82586.h
++++ b/src/devices/machine/i82586.h
+@@ -14,6 +14,9 @@ class i82586_base_device :
+ 	public device_network_interface
+ {
+ public:
++	void set_swap_data(bool swap) { m_swap_data = swap; }
++	void set_add_fcs(bool add) { m_add_fcs = add; }
++
+ 	enum scb_mask
+ 	{
+ 		T       = 0x00000008, // throttle timers loaded
+@@ -209,6 +212,9 @@ protected:
+ 	// device_* members
+ 	const address_space_config m_space_config;
+ 	address_space *m_space;
++	bool m_swap_data = false; // byte lanes of each 16-bit word are crossed for frame data
++	bool m_add_fcs = false; // received frames arrive without padding or a frame check sequence
++	u32 data_order(u32 data) const { return m_swap_data ? ((data & 0x00ff00ffU) << 8) | ((data & 0xff00ff00U) >> 8) : data; }
+ 
+ 	devcb_write_line m_out_irq;
+ 	emu_timer *m_cu_timer;
+@@ -346,7 +352,7 @@ protected:
+ 	virtual void ru_complete(const u16 status) override;
+ 
+ 	// helpers
+-	virtual u32 address(u32 base, int offset, int address) override { return (mode() == MODE_LINEAR) ? m_space->read_dword(base + address) : m_scb_base + m_space->read_word(base + offset); }
++	virtual u32 address(u32 base, int offset, int address) override { return (mode() == MODE_LINEAR) ? m_space->read_dword_unaligned(base + address) : m_scb_base + m_space->read_word(base + offset); }
+ 	virtual u32 address(u32 base, int offset, int address, u16 empty) override;
+ 
+ private:

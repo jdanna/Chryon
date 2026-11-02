@@ -1,11 +1,6 @@
 # MAXINE! Studio
 
-A desktop app that turns modern fonts into fonts for the Chyron MAXINE!, a vintage
-broadcast character generator, so these systems can keep working with new typefaces.
-
-Pick a font, see how it will look, convert it, and send it to the unit.
-
-Here's Comic Sans, converted with this app, running on a real unit:
+A desktop app that converts fonts for the Chyron MAXINE! and other Infinit! series character generators.
 
 ![Comic Sans on a Sony CRT, with the MAXINE! control screen beside it](docs/maxine-crt.jpg)
 
@@ -13,27 +8,25 @@ Here's Comic Sans, converted with this app, running on a real unit:
 
 ## Preview a font
 
-Choose any font installed on your computer, or drop in a TTF, OTF or TTC file. You see
-it right away at your size and spacing, before converting anything.
+Choose any font installed on your computer, or drop in a TTF, OTF or TTC file. 
 
 ![Previewing a font before converting](docs/preview.png)
 
 ## Convert it
 
 Set the size, and add a border or a border with a drop shadow. The result appears next
-to the original at the same scale, so you can see what changed. The edge shows in red.
+to the original. The edge shows in red.
 
-To make a set of sizes, like the original MAXINE! fonts have, choose how many sizes to
-add above and below yours.
+To make a set of sizes, like the original MAXINE! bitmap fonts, choose how many sizes to
+add above and below yours, and the amount of scanlines to increment/decrement.
 
 ![The source font next to the converted font](docs/compare.png)
 
 ## Send it to the MAXINE!
 
-Connect to the unit over FTP to see what's on it, then upload one font or a whole batch.
-Fonts are grouped by typeface, with a twirl-down to show every size. Each one is marked
-when it's on the unit. Only test fonts can be deleted from the unit, so the originals are
-safe, and the app asks before replacing a font.
+Connect to the unit over FTP to upload fonts.
+Fonts are grouped by typeface, with a twirl-down to show every size. Each is marked
+when it's on the unit. 
 
 ![Managing fonts on the Upload tab, connected to a local test server](docs/upload.png)
 

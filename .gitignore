@@ -49,6 +49,8 @@ experiments/uploaded-fonts/
 # purpose; PROM dumps must never reach this public repo.
 emulator/mame/
 emulator/mame-*/
+emulator/ffmpeg/
+emulator/ffmpeg-*/
 emulator/roms/*
 emulator/run/
 *.chd

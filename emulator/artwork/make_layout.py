@@ -4,8 +4,8 @@ Generates the window layout and the matching key table, so the clickable panel a
 can't disagree. Writes artwork/maxine/default.lay and src/mame/chyron/maxine_keys.h.
 
 Each key: name lines, MAXINE key code, host keys separated by spaces or None, and where it sits on the panel in
-(cluster, column, row[, width, height]) or None if it has no panel key. The panel has the keys
-with no obvious host key, in a compact arrangement of the real keyboard's blocks.
+(cluster, column, row[, width, height]) or None if it has no panel key. The panel's right side is laid out like a
+PC keyboard's, with each key where its host key is, so the two are easy to match by position.
 """
 from pathlib import Path
 from xml.sax.saxutils import escape
@@ -16,75 +16,75 @@ SHIFT_CHAR, SHIFT_PAGE, SHIFT_ROW, POINTER_SWITCH, EXPORT_NATIVE, EXPORT_SQUARE 
 
 KEYS = [
     # Mode
-    (("MODE", "SLCT"), 0xff, None, ("mode", 0, 0)),
-    (("ESC",), 0xfe, None, ("mode", 0, 1)),
-    *[((str(i + 1),), 0xa0 + i, None, ("font", i, 0)) for i in range(8)],
-    (("RED",), 0xa8, None, ("font", 0, 1)),
-    (("MGTA",), 0xa9, None, ("font", 1, 1)),
-    (("BLUE",), 0xaa, None, ("font", 2, 1)),
-    (("CYAN",), 0xab, None, ("font", 3, 1)),
-    (("YEL",), 0xac, None, ("font", 4, 1)),
-    (("GRN",), 0xad, None, ("font", 5, 1)),
-    (("WHT",), 0xae, None, ("font", 6, 1)),
-    (("BLCK",), 0xaf, None, ("font", 7, 1)),
-    (("DEL", "ROW"), 0xda, None, ("edit", 0, 1)),
-    (("INS", "ROW"), 0xdb, None, ("edit", 0, 2)),
-    (("CNTR", "ROW"), 0xdc, None, ("edit", 0, 3)),
-    (("DEL", "CHAR"), 0xdd, None, ("edit", 1, 1)),
-    (("INS", "CHAR"), 0xde, None, ("edit", 1, 2)),
-    (("CNTR", "PAGE"), 0xdf, None, ("edit", 2, 3)),
-    (("ERASE",), 0xcd, "DEL", ("edit", 2, 1)),
-    (("DEL", "MSG"), 0xf0, "ASTERISK", ("keypad", 3, 0)),
-    (("RCD",), 0xf1, "PLUS_PAD", ("keypad", 3, 2)),
+    (("MODE", "SLCT"), 0xff, None, ("main", 0, 3, 2, 1)),
+    (("ESC",), 0xfe, None, ("main", 0, 4, 2, 1)),
+    *[((str(i + 1),), 0xa0 + i, None, ("main", i, 0)) for i in range(8)],
+    (("RED",), 0xa8, None, ("main", 0, 1)),
+    (("MGTA",), 0xa9, None, ("main", 1, 1)),
+    (("BLUE",), 0xaa, None, ("main", 2, 1)),
+    (("CYAN",), 0xab, None, ("main", 3, 1)),
+    (("YEL",), 0xac, None, ("main", 4, 1)),
+    (("GRN",), 0xad, None, ("main", 5, 1)),
+    (("WHT",), 0xae, None, ("main", 6, 1)),
+    (("BLCK",), 0xaf, None, ("main", 7, 1)),
+    (("DEL", "ROW"), 0xda, "PRTSCR", ("nav", 0, 0)),
+    (("INS", "ROW"), 0xdb, "SCRLOCK", ("nav", 1, 0)),
+    (("CNTR", "ROW"), 0xdc, "PAUSE", ("nav", 2, 0)),
+    (("DEL", "CHAR"), 0xdd, "INSERT", ("nav", 0, 1)),
+    (("INS", "CHAR"), 0xde, "HOME", ("nav", 1, 1)),
+    (("CNTR", "PAGE"), 0xdf, "PGUP", ("nav", 2, 1)),
+    (("ERASE",), 0xcd, None, ("main", 4, 4, 2, 1)),
+    (("DEL", "MSG"), 0xf0, "ASTERISK", ("keypad", 2, 0)),
+    (("RCD",), 0xf1, "MINUS_PAD", ("keypad", 3, 0)),
     # Function block
-    (("F1",), 0xd0, "F1", ("font", 0, 2)),
-    (("F2",), 0xd1, "F2", ("font", 1, 2)),
-    (("F3",), 0xd2, "F3", ("font", 2, 2)),
-    (("F4",), 0xd3, "F4", ("font", 3, 2)),
-    (("F5",), 0xd4, "F5", ("font", 4, 2)),
-    (("CNVRT",), 0xd6, None, ("font", 0, 3)),
-    (("CRAWL",), 0xd8, "F11", ("font", 1, 3)),
-    (("ROLL",), 0xd9, "F12", ("font", 2, 3)),
-    (("SET-UP",), 0xea, None, ("font", 3, 3)),
-    (("MIX",), 0xe9, None, None),
+    (("F1",), 0xd0, "F1", ("function", 0, 0)),
+    (("F2",), 0xd1, "F2", ("function", 0, 1)),
+    (("F3",), 0xd2, "F3", ("function", 0, 2)),
+    (("F4",), 0xd3, "F4", ("function", 0, 3)),
+    (("F5",), 0xd4, "F5", ("function", 0, 4)),
+    (("CNVRT",), 0xd6, None, ("function", 1, 0)),
+    (("CRAWL",), 0xd8, "F11", ("function", 1, 1)),
+    (("ROLL",), 0xd9, "F12", ("function", 1, 2)),
+    (("SET-UP",), 0xea, None, ("function", 1, 3)),
+    (("MIX",), 0xe9, None, ("function", 1, 4)),
     # Cursor block
-    (("HOME",), 0xcb, None, ("font", 5, 2)),
-    (("COLOR", "FONT"), 0xcc, None, ("font", 7, 2)),
-    (("CURSOR", "UP"), 0x8f, "UP", None),
-    (("CURSOR", "LEFT"), 0x8c, "LEFT", None),
-    (("CURSOR", "RIGHT"), 0x8d, "RIGHT", None),
-    (("CURSOR", "DOWN"), 0x8e, "DOWN", None),
+    (("HOME",), 0xcb, None, ("main", 4, 3, 2, 1)),
+    (("COLOR", "FONT"), 0xcc, None, ("main", 2, 4, 2, 1)),
+    (("CURSOR", "UP"), 0x8f, "UP", ("nav", 1, 3)),
+    (("CURSOR", "LEFT"), 0x8c, "LEFT", ("nav", 0, 4)),
+    (("CURSOR", "RIGHT"), 0x8d, "RIGHT", ("nav", 2, 4)),
+    (("CURSOR", "DOWN"), 0x8e, "DOWN", ("nav", 1, 4)),
     # The host's keys for these are in HOSTHOLD in maxine.cpp, because they're held and these latch
-    (("SHIFT", "CHAR"), SHIFT_CHAR, None, ("edit", 1, 0)),
-    (("SHIFT", "PAGE"), SHIFT_PAGE, None, ("edit", 2, 0)),
-    (("SHIFT", "ROW"), SHIFT_ROW, None, ("edit", 0, 0)),
+    (("SHIFT", "CHAR"), SHIFT_CHAR, None, ("nav", 0, 2)),
+    (("SHIFT", "PAGE"), SHIFT_PAGE, None, ("nav", 1, 2)),
+    (("SHIFT", "ROW"), SHIFT_ROW, None, ("nav", 2, 2)),
     # Keypad
-    (("CNTL",), 0xd5, "LCONTROL", ("font", 5, 3)),
-    (("XFER",), 0xf9, "PGDN", ("font", 7, 3)),
+    (("CNTL",), 0xd5, "LCONTROL", ("main", 6, 4, 2, 1)),
+    (("XFER",), 0xf9, None, ("main", 6, 3, 2, 1)),
     (("CHNG",), 0xf7, None, None),
     (("SLOW", "REVL"), 0xf5, None, None),
-    (("7",), 0xc7, "7_PAD", ("keypad", 0, 0)),
-    (("8",), 0xc8, "8_PAD", ("keypad", 1, 0)),
-    (("9",), 0xc9, "9_PAD", ("keypad", 2, 0)),
+    (("7",), 0xc7, "7_PAD", ("keypad", 0, 1)),
+    (("8",), 0xc8, "8_PAD", ("keypad", 1, 1)),
+    (("9",), 0xc9, "9_PAD", ("keypad", 2, 1)),
     (("DO",), 0xf3, None, None),
-    (("4",), 0xc4, "4_PAD", ("keypad", 0, 1)),
-    (("5",), 0xc5, "5_PAD", ("keypad", 1, 1)),
-    (("6",), 0xc6, "6_PAD", ("keypad", 2, 1)),
-    (("READ", "NEXT"), 0xf6, "MINUS_PAD", ("keypad", 3, 1)),
-    (("1",), 0xc1, "1_PAD", ("keypad", 0, 2)),
-    (("2",), 0xc2, "2_PAD", ("keypad", 1, 2)),
-    (("3",), 0xc3, "3_PAD", ("keypad", 2, 2)),
-    (("READ",), 0xf8, "ENTER_PAD", ("keypad", 3, 3)),
-    (("0",), 0xc0, "0_PAD", ("keypad", 0, 3, 2, 1)),
-    (("CLR",), 0xca, "DEL_PAD", ("keypad", 2, 3)),
+    (("4",), 0xc4, "4_PAD", ("keypad", 0, 2)),
+    (("5",), 0xc5, "5_PAD", ("keypad", 1, 2)),
+    (("6",), 0xc6, "6_PAD", ("keypad", 2, 2)),
+    (("READ", "NEXT"), 0xf6, "PLUS_PAD", ("keypad", 3, 1, 1, 2)),
+    (("1",), 0xc1, "1_PAD", ("keypad", 0, 3)),
+    (("2",), 0xc2, "2_PAD", ("keypad", 1, 3)),
+    (("3",), 0xc3, "3_PAD", ("keypad", 2, 3)),
+    (("READ",), 0xf8, "ENTER_PAD", ("keypad", 3, 3, 1, 2)),
+    (("0",), 0xc0, "0_PAD", ("keypad", 0, 4, 2, 1)),
+    (("CLR",), 0xca, "DEL_PAD", ("keypad", 2, 4)),
     # On the host keyboard only
     (("ALT",), 0xcf, "LALT", None),
     *[((f"F{i + 6}",), 0xe0 + i, f"F{i + 6}", None) for i in range(5)],
     # Emulator only: what the host pointer drives
-    (("MOUSE",), POINTER_SWITCH, None, ("mode", 0, 3)),
+    (("MOUSE",), POINTER_SWITCH, None, ("export", 0, 4)),
     # Added at the end so the indices above stay put. Tab from the host arrives through host_key.
-    (("TAB",), 0xe5, None, ("mode", 0, 2)),
-    (("BUILD",), 0xf2, None, ("edit", 2, 2)),
+    (("TAB",), 0xe5, None, ("main", 2, 3, 2, 1)),
+    (("BUILD",), 0xf2, "SLASH_PAD", ("keypad", 1, 0)),
     # Emulator only: for Linux and Windows, which have no Export menu
     (("EXPORT", "NATIVE"), EXPORT_NATIVE, None, ("export", 0, 0, 1, 2)),
     (("EXPORT", "SQUARE", "PIXEL"), EXPORT_SQUARE, None, ("export", 0, 2, 1, 2)),
@@ -98,17 +98,30 @@ PROMPTS_W, EDIT_W, SCREEN_H, GAP = 520, 603, 452, 8
 WIDTH = PROMPTS_W + GAP + EDIT_W
 KEY_W, KEY_H, PITCH_X, PITCH_Y = 52, 30, 56, 33
 PANEL_Y = SCREEN_H + GAP
-PANEL_H = 4 * PITCH_Y + 7
+PANEL_H = 5 * PITCH_Y + 7
 HEIGHT = PANEL_Y + PANEL_H
 
-PANEL_LEFT = (WIDTH - 1100) // 2
-CLUSTERS = {
-    "mode": (PANEL_LEFT, PANEL_Y + 5),
-    "font": (PANEL_LEFT + 80, PANEL_Y + 5),
-    "edit": (PANEL_LEFT + 556, PANEL_Y + 5),
-    "keypad": (PANEL_LEFT + 804, PANEL_Y + 5),
-    "export": (PANEL_LEFT + 1048, PANEL_Y + 5),
-}
+# Clusters from left to right, with their widths in keys, spaced to fill the panel
+CLUSTER_WIDTHS = {"function": 2, "main": 8, "nav": 3, "keypad": 4, "export": 1}
+CLUSTER_GAP = 30
+CLUSTERS = {}
+_x = (WIDTH - sum(columns * PITCH_X - (PITCH_X - KEY_W) for columns in CLUSTER_WIDTHS.values())
+      - CLUSTER_GAP * (len(CLUSTER_WIDTHS) - 1)) // 2
+for _name, _columns in CLUSTER_WIDTHS.items():
+    CLUSTERS[_name] = (_x, PANEL_Y + 5)
+    _x += _columns * PITCH_X - (PITCH_X - KEY_W) + CLUSTER_GAP
+
+
+# Degrees to turn the arrow, which points right, on the cursor keys. They're shapes, not text, because layout text
+# uses each system's own font and not all of them have arrows.
+ARROWS = {0x8f: 270, 0x8c: 180, 0x8d: 0, 0x8e: 90}
+
+
+def arrow(degrees):
+    return (f'<image><bounds x="0" y="0" width="1" height="1"/><data><![CDATA['
+            f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {KEY_W} {KEY_H}">'
+            f'<path fill="#eeeee6" transform="rotate({degrees} {KEY_W / 2} {KEY_H / 2})" '
+            f'd="M16 13h11V7l10 8-10 8v-6H16z"/></svg>]]></data></image>')
 
 
 def text(string, x, y, w, h, color):
@@ -116,12 +129,14 @@ def text(string, x, y, w, h, color):
             f'<color {color}/></text>')
 
 
-def key_element(index, lines, tall, lit_name=None):
+def key_element(index, lines, tall, lit_name=None, degrees=None):
     ink = 'red="0.93" green="0.93" blue="0.9"'
     parts = [f'<element name="key{index}">',
              '<rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect>',
              '<rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect>']
-    if lit_name:
+    if degrees is not None:
+        parts.append(arrow(degrees))
+    elif lit_name:
         parts.append(text(lines[0], 0.08, 0.28, 0.84, 0.44, ink).replace('<text ', '<text state="0" '))
         parts.append(text(lit_name, 0.08, 0.28, 0.84, 0.44, ink).replace('<text ', '<text state="1" '))
     elif len(lines) == 1 and tall:
@@ -147,7 +162,7 @@ def layout():
         if place is None:
             continue
         out.append(key_element(index, lines, len(place) > 3 and place[4] > 1,
-                               "TABLET" if code == POINTER_SWITCH else None))
+                               "TABLET" if code == POINTER_SWITCH else None, ARROWS.get(code)))
         cluster, column, row = place[:3]
         wide, tall = (place[3], place[4]) if len(place) > 3 else (1, 1)
         x0, y0 = CLUSTERS[cluster]

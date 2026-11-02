@@ -38,8 +38,13 @@
 <element name="key33"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><text string="CRAWL"><bounds x="0.08" y="0.28" width="0.84" height="0.44"/><color red="0.93" green="0.93" blue="0.9"/></text></element>
 <element name="key34"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><text string="ROLL"><bounds x="0.08" y="0.28" width="0.84" height="0.44"/><color red="0.93" green="0.93" blue="0.9"/></text></element>
 <element name="key35"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><text string="SET-UP"><bounds x="0.08" y="0.28" width="0.84" height="0.44"/><color red="0.93" green="0.93" blue="0.9"/></text></element>
+<element name="key36"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><text string="MIX"><bounds x="0.08" y="0.28" width="0.84" height="0.44"/><color red="0.93" green="0.93" blue="0.9"/></text></element>
 <element name="key37"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><text string="HOME"><bounds x="0.08" y="0.28" width="0.84" height="0.44"/><color red="0.93" green="0.93" blue="0.9"/></text></element>
 <element name="key38"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><text string="COLOR"><bounds x="0.08" y="0.1" width="0.84" height="0.38"/><color red="0.93" green="0.93" blue="0.9"/></text><text string="FONT"><bounds x="0.08" y="0.52" width="0.84" height="0.38"/><color red="0.93" green="0.93" blue="0.9"/></text></element>
+<element name="key39"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><image><bounds x="0" y="0" width="1" height="1"/><data><![CDATA[<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 30"><path fill="#eeeee6" transform="rotate(270 26.0 15.0)" d="M16 13h11V7l10 8-10 8v-6H16z"/></svg>]]></data></image></element>
+<element name="key40"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><image><bounds x="0" y="0" width="1" height="1"/><data><![CDATA[<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 30"><path fill="#eeeee6" transform="rotate(180 26.0 15.0)" d="M16 13h11V7l10 8-10 8v-6H16z"/></svg>]]></data></image></element>
+<element name="key41"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><image><bounds x="0" y="0" width="1" height="1"/><data><![CDATA[<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 30"><path fill="#eeeee6" transform="rotate(0 26.0 15.0)" d="M16 13h11V7l10 8-10 8v-6H16z"/></svg>]]></data></image></element>
+<element name="key42"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><image><bounds x="0" y="0" width="1" height="1"/><data><![CDATA[<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 30"><path fill="#eeeee6" transform="rotate(90 26.0 15.0)" d="M16 13h11V7l10 8-10 8v-6H16z"/></svg>]]></data></image></element>
 <element name="key43"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><text string="SHIFT"><bounds x="0.08" y="0.1" width="0.84" height="0.38"/><color red="0.93" green="0.93" blue="0.9"/></text><text string="CHAR"><bounds x="0.08" y="0.52" width="0.84" height="0.38"/><color red="0.93" green="0.93" blue="0.9"/></text></element>
 <element name="key44"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><text string="SHIFT"><bounds x="0.08" y="0.1" width="0.84" height="0.38"/><color red="0.93" green="0.93" blue="0.9"/></text><text string="PAGE"><bounds x="0.08" y="0.52" width="0.84" height="0.38"/><color red="0.93" green="0.93" blue="0.9"/></text></element>
 <element name="key45"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><text string="SHIFT"><bounds x="0.08" y="0.1" width="0.84" height="0.38"/><color red="0.93" green="0.93" blue="0.9"/></text><text string="ROW"><bounds x="0.08" y="0.52" width="0.84" height="0.38"/><color red="0.93" green="0.93" blue="0.9"/></text></element>
@@ -51,11 +56,11 @@
 <element name="key54"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><text string="4"><bounds x="0.08" y="0.28" width="0.84" height="0.44"/><color red="0.93" green="0.93" blue="0.9"/></text></element>
 <element name="key55"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><text string="5"><bounds x="0.08" y="0.28" width="0.84" height="0.44"/><color red="0.93" green="0.93" blue="0.9"/></text></element>
 <element name="key56"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><text string="6"><bounds x="0.08" y="0.28" width="0.84" height="0.44"/><color red="0.93" green="0.93" blue="0.9"/></text></element>
-<element name="key57"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><text string="READ"><bounds x="0.08" y="0.1" width="0.84" height="0.38"/><color red="0.93" green="0.93" blue="0.9"/></text><text string="NEXT"><bounds x="0.08" y="0.52" width="0.84" height="0.38"/><color red="0.93" green="0.93" blue="0.9"/></text></element>
+<element name="key57"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><text string="READ"><bounds x="0.08" y="0.26" width="0.84" height="0.24"/><color red="0.93" green="0.93" blue="0.9"/></text><text string="NEXT"><bounds x="0.08" y="0.5" width="0.84" height="0.24"/><color red="0.93" green="0.93" blue="0.9"/></text></element>
 <element name="key58"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><text string="1"><bounds x="0.08" y="0.28" width="0.84" height="0.44"/><color red="0.93" green="0.93" blue="0.9"/></text></element>
 <element name="key59"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><text string="2"><bounds x="0.08" y="0.28" width="0.84" height="0.44"/><color red="0.93" green="0.93" blue="0.9"/></text></element>
 <element name="key60"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><text string="3"><bounds x="0.08" y="0.28" width="0.84" height="0.44"/><color red="0.93" green="0.93" blue="0.9"/></text></element>
-<element name="key61"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><text string="READ"><bounds x="0.08" y="0.28" width="0.84" height="0.44"/><color red="0.93" green="0.93" blue="0.9"/></text></element>
+<element name="key61"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><text string="READ"><bounds x="0.08" y="0.38" width="0.84" height="0.24"/><color red="0.93" green="0.93" blue="0.9"/></text></element>
 <element name="key62"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><text string="0"><bounds x="0.08" y="0.28" width="0.84" height="0.44"/><color red="0.93" green="0.93" blue="0.9"/></text></element>
 <element name="key63"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><text string="CLR"><bounds x="0.08" y="0.28" width="0.84" height="0.44"/><color red="0.93" green="0.93" blue="0.9"/></text></element>
 <element name="key70"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><text state="0" string="MOUSE"><bounds x="0.08" y="0.28" width="0.84" height="0.44"/><color red="0.93" green="0.93" blue="0.9"/></text><text state="1" string="TABLET"><bounds x="0.08" y="0.28" width="0.84" height="0.44"/><color red="0.93" green="0.93" blue="0.9"/></text></element>
@@ -63,71 +68,76 @@
 <element name="key72"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><text string="BUILD"><bounds x="0.08" y="0.28" width="0.84" height="0.44"/><color red="0.93" green="0.93" blue="0.9"/></text></element>
 <element name="key73"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><text string="EXPORT"><bounds x="0.08" y="0.26" width="0.84" height="0.24"/><color red="0.93" green="0.93" blue="0.9"/></text><text string="NATIVE"><bounds x="0.08" y="0.5" width="0.84" height="0.24"/><color red="0.93" green="0.93" blue="0.9"/></text></element>
 <element name="key74"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><text string="EXPORT"><bounds x="0.08" y="0.14" width="0.84" height="0.24"/><color red="0.93" green="0.93" blue="0.9"/></text><text string="SQUARE"><bounds x="0.08" y="0.38" width="0.84" height="0.24"/><color red="0.93" green="0.93" blue="0.9"/></text><text string="PIXEL"><bounds x="0.08" y="0.62" width="0.84" height="0.24"/><color red="0.93" green="0.93" blue="0.9"/></text></element>
-<view name="MAXINE" showpointers="no"><bounds x="0" y="0" width="1131" height="599"/>
+<view name="MAXINE" showpointers="no"><bounds x="0" y="0" width="1131" height="632"/>
 <screen id="prompts" index="0"><bounds x="0" y="0" width="520" height="452"/></screen>
 <screen id="edit" index="1"><bounds x="528" y="0" width="603" height="452"/></screen>
-<element ref="panel"><bounds x="0" y="460" width="1131" height="139"/></element>
-<element ref="key0" inputtag="PANEL0" inputmask="0x00000001"><bounds x="15" y="465" width="52" height="30"/></element>
-<element ref="key1" inputtag="PANEL0" inputmask="0x00000002"><bounds x="15" y="498" width="52" height="30"/></element>
-<element ref="key2" inputtag="PANEL0" inputmask="0x00000004"><bounds x="95" y="465" width="52" height="30"/></element>
-<element ref="key3" inputtag="PANEL0" inputmask="0x00000008"><bounds x="151" y="465" width="52" height="30"/></element>
-<element ref="key4" inputtag="PANEL0" inputmask="0x00000010"><bounds x="207" y="465" width="52" height="30"/></element>
-<element ref="key5" inputtag="PANEL0" inputmask="0x00000020"><bounds x="263" y="465" width="52" height="30"/></element>
-<element ref="key6" inputtag="PANEL0" inputmask="0x00000040"><bounds x="319" y="465" width="52" height="30"/></element>
-<element ref="key7" inputtag="PANEL0" inputmask="0x00000080"><bounds x="375" y="465" width="52" height="30"/></element>
-<element ref="key8" inputtag="PANEL0" inputmask="0x00000100"><bounds x="431" y="465" width="52" height="30"/></element>
-<element ref="key9" inputtag="PANEL0" inputmask="0x00000200"><bounds x="487" y="465" width="52" height="30"/></element>
-<element ref="key10" inputtag="PANEL0" inputmask="0x00000400"><bounds x="95" y="498" width="52" height="30"/></element>
-<element ref="key11" inputtag="PANEL0" inputmask="0x00000800"><bounds x="151" y="498" width="52" height="30"/></element>
-<element ref="key12" inputtag="PANEL0" inputmask="0x00001000"><bounds x="207" y="498" width="52" height="30"/></element>
-<element ref="key13" inputtag="PANEL0" inputmask="0x00002000"><bounds x="263" y="498" width="52" height="30"/></element>
-<element ref="key14" inputtag="PANEL0" inputmask="0x00004000"><bounds x="319" y="498" width="52" height="30"/></element>
-<element ref="key15" inputtag="PANEL0" inputmask="0x00008000"><bounds x="375" y="498" width="52" height="30"/></element>
-<element ref="key16" inputtag="PANEL0" inputmask="0x00010000"><bounds x="431" y="498" width="52" height="30"/></element>
-<element ref="key17" inputtag="PANEL0" inputmask="0x00020000"><bounds x="487" y="498" width="52" height="30"/></element>
-<element ref="key18" inputtag="PANEL0" inputmask="0x00040000"><bounds x="571" y="498" width="52" height="30"/></element>
-<element ref="key19" inputtag="PANEL0" inputmask="0x00080000"><bounds x="571" y="531" width="52" height="30"/></element>
-<element ref="key20" inputtag="PANEL0" inputmask="0x00100000"><bounds x="571" y="564" width="52" height="30"/></element>
-<element ref="key21" inputtag="PANEL0" inputmask="0x00200000"><bounds x="627" y="498" width="52" height="30"/></element>
-<element ref="key22" inputtag="PANEL0" inputmask="0x00400000"><bounds x="627" y="531" width="52" height="30"/></element>
-<element ref="key23" inputtag="PANEL0" inputmask="0x00800000"><bounds x="683" y="564" width="52" height="30"/></element>
-<element ref="key24" inputtag="PANEL0" inputmask="0x01000000"><bounds x="683" y="498" width="52" height="30"/></element>
-<element ref="key25" inputtag="PANEL0" inputmask="0x02000000"><bounds x="987" y="465" width="52" height="30"/></element>
-<element ref="key26" inputtag="PANEL0" inputmask="0x04000000"><bounds x="987" y="531" width="52" height="30"/></element>
-<element ref="key27" inputtag="PANEL0" inputmask="0x08000000"><bounds x="95" y="531" width="52" height="30"/></element>
-<element ref="key28" inputtag="PANEL0" inputmask="0x10000000"><bounds x="151" y="531" width="52" height="30"/></element>
-<element ref="key29" inputtag="PANEL0" inputmask="0x20000000"><bounds x="207" y="531" width="52" height="30"/></element>
-<element ref="key30" inputtag="PANEL0" inputmask="0x40000000"><bounds x="263" y="531" width="52" height="30"/></element>
-<element ref="key31" inputtag="PANEL0" inputmask="0x80000000"><bounds x="319" y="531" width="52" height="30"/></element>
-<element ref="key32" inputtag="PANEL1" inputmask="0x00000001"><bounds x="95" y="564" width="52" height="30"/></element>
-<element ref="key33" inputtag="PANEL1" inputmask="0x00000002"><bounds x="151" y="564" width="52" height="30"/></element>
-<element ref="key34" inputtag="PANEL1" inputmask="0x00000004"><bounds x="207" y="564" width="52" height="30"/></element>
-<element ref="key35" inputtag="PANEL1" inputmask="0x00000008"><bounds x="263" y="564" width="52" height="30"/></element>
-<element ref="key37" inputtag="PANEL1" inputmask="0x00000020"><bounds x="375" y="531" width="52" height="30"/></element>
-<element ref="key38" inputtag="PANEL1" inputmask="0x00000040"><bounds x="487" y="531" width="52" height="30"/></element>
-<element ref="key43" name="shift0" inputtag="PANEL1" inputmask="0x00000800"><bounds x="627" y="465" width="52" height="30"/></element>
-<element ref="key44" name="shift1" inputtag="PANEL1" inputmask="0x00001000"><bounds x="683" y="465" width="52" height="30"/></element>
-<element ref="key45" name="shift2" inputtag="PANEL1" inputmask="0x00002000"><bounds x="571" y="465" width="52" height="30"/></element>
-<element ref="key46" inputtag="PANEL1" inputmask="0x00004000"><bounds x="375" y="564" width="52" height="30"/></element>
-<element ref="key47" inputtag="PANEL1" inputmask="0x00008000"><bounds x="487" y="564" width="52" height="30"/></element>
-<element ref="key50" inputtag="PANEL1" inputmask="0x00040000"><bounds x="819" y="465" width="52" height="30"/></element>
-<element ref="key51" inputtag="PANEL1" inputmask="0x00080000"><bounds x="875" y="465" width="52" height="30"/></element>
-<element ref="key52" inputtag="PANEL1" inputmask="0x00100000"><bounds x="931" y="465" width="52" height="30"/></element>
-<element ref="key54" inputtag="PANEL1" inputmask="0x00400000"><bounds x="819" y="498" width="52" height="30"/></element>
-<element ref="key55" inputtag="PANEL1" inputmask="0x00800000"><bounds x="875" y="498" width="52" height="30"/></element>
-<element ref="key56" inputtag="PANEL1" inputmask="0x01000000"><bounds x="931" y="498" width="52" height="30"/></element>
-<element ref="key57" inputtag="PANEL1" inputmask="0x02000000"><bounds x="987" y="498" width="52" height="30"/></element>
-<element ref="key58" inputtag="PANEL1" inputmask="0x04000000"><bounds x="819" y="531" width="52" height="30"/></element>
-<element ref="key59" inputtag="PANEL1" inputmask="0x08000000"><bounds x="875" y="531" width="52" height="30"/></element>
-<element ref="key60" inputtag="PANEL1" inputmask="0x10000000"><bounds x="931" y="531" width="52" height="30"/></element>
-<element ref="key61" inputtag="PANEL1" inputmask="0x20000000"><bounds x="987" y="564" width="52" height="30"/></element>
-<element ref="key62" inputtag="PANEL1" inputmask="0x40000000"><bounds x="819" y="564" width="108" height="30"/></element>
-<element ref="key63" inputtag="PANEL1" inputmask="0x80000000"><bounds x="931" y="564" width="52" height="30"/></element>
-<element ref="key70" name="shift3" inputtag="PANEL2" inputmask="0x00000040"><bounds x="15" y="564" width="52" height="30"/></element>
-<element ref="key71" inputtag="PANEL2" inputmask="0x00000080"><bounds x="15" y="531" width="52" height="30"/></element>
-<element ref="key72" inputtag="PANEL2" inputmask="0x00000100"><bounds x="683" y="531" width="52" height="30"/></element>
-<element ref="key73" inputtag="PANEL2" inputmask="0x00000200"><bounds x="1063" y="465" width="52" height="63"/></element>
-<element ref="key74" inputtag="PANEL2" inputmask="0x00000400"><bounds x="1063" y="531" width="52" height="63"/></element>
+<element ref="panel"><bounds x="0" y="460" width="1131" height="172"/></element>
+<element ref="key0" inputtag="PANEL0" inputmask="0x00000001"><bounds x="149" y="564" width="108" height="30"/></element>
+<element ref="key1" inputtag="PANEL0" inputmask="0x00000002"><bounds x="149" y="597" width="108" height="30"/></element>
+<element ref="key2" inputtag="PANEL0" inputmask="0x00000004"><bounds x="149" y="465" width="52" height="30"/></element>
+<element ref="key3" inputtag="PANEL0" inputmask="0x00000008"><bounds x="205" y="465" width="52" height="30"/></element>
+<element ref="key4" inputtag="PANEL0" inputmask="0x00000010"><bounds x="261" y="465" width="52" height="30"/></element>
+<element ref="key5" inputtag="PANEL0" inputmask="0x00000020"><bounds x="317" y="465" width="52" height="30"/></element>
+<element ref="key6" inputtag="PANEL0" inputmask="0x00000040"><bounds x="373" y="465" width="52" height="30"/></element>
+<element ref="key7" inputtag="PANEL0" inputmask="0x00000080"><bounds x="429" y="465" width="52" height="30"/></element>
+<element ref="key8" inputtag="PANEL0" inputmask="0x00000100"><bounds x="485" y="465" width="52" height="30"/></element>
+<element ref="key9" inputtag="PANEL0" inputmask="0x00000200"><bounds x="541" y="465" width="52" height="30"/></element>
+<element ref="key10" inputtag="PANEL0" inputmask="0x00000400"><bounds x="149" y="498" width="52" height="30"/></element>
+<element ref="key11" inputtag="PANEL0" inputmask="0x00000800"><bounds x="205" y="498" width="52" height="30"/></element>
+<element ref="key12" inputtag="PANEL0" inputmask="0x00001000"><bounds x="261" y="498" width="52" height="30"/></element>
+<element ref="key13" inputtag="PANEL0" inputmask="0x00002000"><bounds x="317" y="498" width="52" height="30"/></element>
+<element ref="key14" inputtag="PANEL0" inputmask="0x00004000"><bounds x="373" y="498" width="52" height="30"/></element>
+<element ref="key15" inputtag="PANEL0" inputmask="0x00008000"><bounds x="429" y="498" width="52" height="30"/></element>
+<element ref="key16" inputtag="PANEL0" inputmask="0x00010000"><bounds x="485" y="498" width="52" height="30"/></element>
+<element ref="key17" inputtag="PANEL0" inputmask="0x00020000"><bounds x="541" y="498" width="52" height="30"/></element>
+<element ref="key18" inputtag="PANEL0" inputmask="0x00040000"><bounds x="623" y="465" width="52" height="30"/></element>
+<element ref="key19" inputtag="PANEL0" inputmask="0x00080000"><bounds x="679" y="465" width="52" height="30"/></element>
+<element ref="key20" inputtag="PANEL0" inputmask="0x00100000"><bounds x="735" y="465" width="52" height="30"/></element>
+<element ref="key21" inputtag="PANEL0" inputmask="0x00200000"><bounds x="623" y="498" width="52" height="30"/></element>
+<element ref="key22" inputtag="PANEL0" inputmask="0x00400000"><bounds x="679" y="498" width="52" height="30"/></element>
+<element ref="key23" inputtag="PANEL0" inputmask="0x00800000"><bounds x="735" y="498" width="52" height="30"/></element>
+<element ref="key24" inputtag="PANEL0" inputmask="0x01000000"><bounds x="373" y="597" width="108" height="30"/></element>
+<element ref="key25" inputtag="PANEL0" inputmask="0x02000000"><bounds x="929" y="465" width="52" height="30"/></element>
+<element ref="key26" inputtag="PANEL0" inputmask="0x04000000"><bounds x="985" y="465" width="52" height="30"/></element>
+<element ref="key27" inputtag="PANEL0" inputmask="0x08000000"><bounds x="11" y="465" width="52" height="30"/></element>
+<element ref="key28" inputtag="PANEL0" inputmask="0x10000000"><bounds x="11" y="498" width="52" height="30"/></element>
+<element ref="key29" inputtag="PANEL0" inputmask="0x20000000"><bounds x="11" y="531" width="52" height="30"/></element>
+<element ref="key30" inputtag="PANEL0" inputmask="0x40000000"><bounds x="11" y="564" width="52" height="30"/></element>
+<element ref="key31" inputtag="PANEL0" inputmask="0x80000000"><bounds x="11" y="597" width="52" height="30"/></element>
+<element ref="key32" inputtag="PANEL1" inputmask="0x00000001"><bounds x="67" y="465" width="52" height="30"/></element>
+<element ref="key33" inputtag="PANEL1" inputmask="0x00000002"><bounds x="67" y="498" width="52" height="30"/></element>
+<element ref="key34" inputtag="PANEL1" inputmask="0x00000004"><bounds x="67" y="531" width="52" height="30"/></element>
+<element ref="key35" inputtag="PANEL1" inputmask="0x00000008"><bounds x="67" y="564" width="52" height="30"/></element>
+<element ref="key36" inputtag="PANEL1" inputmask="0x00000010"><bounds x="67" y="597" width="52" height="30"/></element>
+<element ref="key37" inputtag="PANEL1" inputmask="0x00000020"><bounds x="373" y="564" width="108" height="30"/></element>
+<element ref="key38" inputtag="PANEL1" inputmask="0x00000040"><bounds x="261" y="597" width="108" height="30"/></element>
+<element ref="key39" inputtag="PANEL1" inputmask="0x00000080"><bounds x="679" y="564" width="52" height="30"/></element>
+<element ref="key40" inputtag="PANEL1" inputmask="0x00000100"><bounds x="623" y="597" width="52" height="30"/></element>
+<element ref="key41" inputtag="PANEL1" inputmask="0x00000200"><bounds x="735" y="597" width="52" height="30"/></element>
+<element ref="key42" inputtag="PANEL1" inputmask="0x00000400"><bounds x="679" y="597" width="52" height="30"/></element>
+<element ref="key43" name="shift0" inputtag="PANEL1" inputmask="0x00000800"><bounds x="623" y="531" width="52" height="30"/></element>
+<element ref="key44" name="shift1" inputtag="PANEL1" inputmask="0x00001000"><bounds x="679" y="531" width="52" height="30"/></element>
+<element ref="key45" name="shift2" inputtag="PANEL1" inputmask="0x00002000"><bounds x="735" y="531" width="52" height="30"/></element>
+<element ref="key46" inputtag="PANEL1" inputmask="0x00004000"><bounds x="485" y="597" width="108" height="30"/></element>
+<element ref="key47" inputtag="PANEL1" inputmask="0x00008000"><bounds x="485" y="564" width="108" height="30"/></element>
+<element ref="key50" inputtag="PANEL1" inputmask="0x00040000"><bounds x="817" y="498" width="52" height="30"/></element>
+<element ref="key51" inputtag="PANEL1" inputmask="0x00080000"><bounds x="873" y="498" width="52" height="30"/></element>
+<element ref="key52" inputtag="PANEL1" inputmask="0x00100000"><bounds x="929" y="498" width="52" height="30"/></element>
+<element ref="key54" inputtag="PANEL1" inputmask="0x00400000"><bounds x="817" y="531" width="52" height="30"/></element>
+<element ref="key55" inputtag="PANEL1" inputmask="0x00800000"><bounds x="873" y="531" width="52" height="30"/></element>
+<element ref="key56" inputtag="PANEL1" inputmask="0x01000000"><bounds x="929" y="531" width="52" height="30"/></element>
+<element ref="key57" inputtag="PANEL1" inputmask="0x02000000"><bounds x="985" y="498" width="52" height="63"/></element>
+<element ref="key58" inputtag="PANEL1" inputmask="0x04000000"><bounds x="817" y="564" width="52" height="30"/></element>
+<element ref="key59" inputtag="PANEL1" inputmask="0x08000000"><bounds x="873" y="564" width="52" height="30"/></element>
+<element ref="key60" inputtag="PANEL1" inputmask="0x10000000"><bounds x="929" y="564" width="52" height="30"/></element>
+<element ref="key61" inputtag="PANEL1" inputmask="0x20000000"><bounds x="985" y="564" width="52" height="63"/></element>
+<element ref="key62" inputtag="PANEL1" inputmask="0x40000000"><bounds x="817" y="597" width="108" height="30"/></element>
+<element ref="key63" inputtag="PANEL1" inputmask="0x80000000"><bounds x="929" y="597" width="52" height="30"/></element>
+<element ref="key70" name="shift3" inputtag="PANEL2" inputmask="0x00000040"><bounds x="1067" y="597" width="52" height="30"/></element>
+<element ref="key71" inputtag="PANEL2" inputmask="0x00000080"><bounds x="261" y="564" width="108" height="30"/></element>
+<element ref="key72" inputtag="PANEL2" inputmask="0x00000100"><bounds x="873" y="465" width="52" height="30"/></element>
+<element ref="key73" inputtag="PANEL2" inputmask="0x00000200"><bounds x="1067" y="465" width="52" height="63"/></element>
+<element ref="key74" inputtag="PANEL2" inputmask="0x00000400"><bounds x="1067" y="531" width="52" height="63"/></element>
 </view>
 <script><![CDATA[
 local LEFT, TOP, WIDTH, HEIGHT = 92, 20, 520, 452

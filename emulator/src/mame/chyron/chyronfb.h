@@ -25,6 +25,9 @@ public:
 	void render_video(bitmap_rgb32 &bitmap, rectangle const &cliprect) const;
 	void render_key(bitmap_rgb32 &bitmap, rectangle const &cliprect) const;
 
+	// One field of both, every second line of a width x height frame of $KKRRGGBB
+	void render_field(uint32_t *frame, unsigned first_line, unsigned width, unsigned height) const;
+
 protected:
 	virtual void device_start() override ATTR_COLD;
 	virtual void device_reset() override ATTR_COLD;
@@ -39,6 +42,7 @@ private:
 		REG_COLOR = 0x04 / 4,
 		REG_ADDRESS = 0x08 / 4,
 		REG_DATA = 0x0c / 4,
+		REG_PIXEL = 0x18 / 4,
 		LINES_A = 0x10000 / 4,
 		LINES_B = 0x11000 / 4,
 		PALETTE = 0x20000 / 4,
@@ -65,9 +69,10 @@ private:
 	pixel *row(unsigned y) const { return &m_vram[(y % ROWS) * ROW_PIXELS]; }
 	void put(uint32_t data);
 	void put_pixel(uint32_t data);
+	uint32_t get_pixel();
 	void copy_rows(uint32_t data);
 	uint32_t palette(unsigned index) const;
-	pixel const *display_row(int y) const;
+	pixel const &display_pixel(int y, int x) const;
 	void output_pixel(pixel const &p, uint32_t &video, uint8_t &key) const;
 
 	std::unique_ptr<pixel[]> m_vram;

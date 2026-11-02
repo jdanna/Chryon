@@ -14,7 +14,10 @@
          4 red, 5 yellow, 6 magenta, 7 white
     +08  address, row << 10 | x. 2048 rows: two banks of 1024
     +0c  data port
-    $10000, $11000  line tables, 1024 longs each: row * $800 for each display line
+    +18  pixel port: reads back pixels from the address, moving along the row. The driver
+         copies a page to the other bank this way when a roll is armed
+    $10000, $11000  line tables, 1024 longs each, for banks A and B: row * $800 + x for
+                    each display line. A roll changes the row and a crawl changes x
     $30000  a third table, purpose unknown
     $20000  palette, 8 banks of 32 at bank << 8 | ramp
 
@@ -66,11 +69,13 @@ void chyron_fb_device::device_reset()
 {
 }
 
-// Registers are write-only and float high, which is how HWINIT tells this board from an Anchor
+// The other registers are write-only and float high, which is how HWINIT tells this board from an Anchor
 uint32_t chyron_fb_device::read(offs_t offset, uint32_t mem_mask)
 {
 	if (offset >= PALETTE && offset < PALETTE_END)
 		return m_regs[offset];
+	if (offset == REG_PIXEL)
+		return get_pixel();
 	return 0xffffffff;
 }
 
@@ -164,6 +169,17 @@ void chyron_fb_device::put_pixel(uint32_t data)
 	p.under = 0;
 }
 
+// In the form put_pixel takes, because the driver writes these straight back to the other bank
+uint32_t chyron_fb_device::get_pixel()
+{
+	uint32_t video;
+	uint8_t key;
+	output_pixel(row(m_y)[m_x % ROW_PIXELS], video, key);
+	if (!machine().side_effects_disabled())
+		m_x++;
+	return uint32_t(key) << 24 | swapendian_int32(video) >> 8;
+}
+
 // Data 3 latches the addressed row, then each record's length is that many rows filled from it
 void chyron_fb_device::copy_rows(uint32_t data)
 {
@@ -195,11 +211,22 @@ static uint32_t mix(uint32_t under, uint32_t over, unsigned key)
 	return (r << 16) | (g << 8) | b;
 }
 
-// The bank being drawn is hidden: the driver writes one, flips, then repeats on the other
-chyron_fb_device::pixel const *chyron_fb_device::display_row(int y) const
+// The bank being drawn is hidden: the driver writes one, flips, then repeats on the other. Each bank has
+// its own line table, whose entries are row << 11 | x. A crawl only moves the x of its lines, with the
+// hidden table 720 behind, as x + 1328 of 2048. Its x then wraps to 0 just where the shown strip runs
+// out, so that's where the picture continues from the other bank. Text moves through 720-pixel strips,
+// one in each bank. Which logic does this on the board isn't known.
+chyron_fb_device::pixel const &chyron_fb_device::display_pixel(int y, int x) const
 {
-	unsigned const bank = (m_regs[REG_CONTROL] & CONTROL_BANK) ? ROWS / 2 : 0;
-	return row((m_regs[LINES_A + y] >> 11) + bank);
+	static constexpr unsigned LINE_X_SIZE = 0x800;
+
+	bool const bank = m_regs[REG_CONTROL] & CONTROL_BANK;
+	uint32_t const shown = m_regs[(bank ? LINES_B : LINES_A) + y];
+	uint32_t const hidden = m_regs[(bank ? LINES_A : LINES_B) + y];
+	unsigned const next = (hidden & (LINE_X_SIZE - 1)) + x;
+	if (next >= LINE_X_SIZE)
+		return row((hidden >> 11) + (bank ? 0 : ROWS / 2))[next - LINE_X_SIZE];
+	return row((shown >> 11) + (bank ? ROWS / 2 : 0))[((shown & (LINE_X_SIZE - 1)) + x) % ROW_PIXELS];
 }
 
 // Video and key before the key is applied: colour over black, and the matte
@@ -222,12 +249,11 @@ void chyron_fb_device::render_video(bitmap_rgb32 &bitmap, rectangle const &clipr
 {
 	for (int y = cliprect.min_y; y <= cliprect.max_y; y++)
 	{
-		pixel const *const src = display_row(y);
 		uint32_t *const dest = &bitmap.pix(y);
 		for (int x = cliprect.min_x; x <= cliprect.max_x; x++)
 		{
 			uint8_t key;
-			output_pixel(src[x], dest[x], key);
+			output_pixel(display_pixel(y, x), dest[x], key);
 		}
 	}
 }
@@ -236,14 +262,28 @@ void chyron_fb_device::render_key(bitmap_rgb32 &bitmap, rectangle const &cliprec
 {
 	for (int y = cliprect.min_y; y <= cliprect.max_y; y++)
 	{
-		pixel const *const src = display_row(y);
 		uint32_t *const dest = &bitmap.pix(y);
 		for (int x = cliprect.min_x; x <= cliprect.max_x; x++)
 		{
 			uint32_t video;
 			uint8_t key;
-			output_pixel(src[x], video, key);
+			output_pixel(display_pixel(y, x), video, key);
 			dest[x] = (key << 16) | (key << 8) | key;
+		}
+	}
+}
+
+void chyron_fb_device::render_field(uint32_t *frame, unsigned first_line, unsigned width, unsigned height) const
+{
+	for (unsigned y = first_line; y < height; y += 2)
+	{
+		uint32_t *const dest = &frame[y * width];
+		for (unsigned x = 0; x < width; x++)
+		{
+			uint32_t video;
+			uint8_t key;
+			output_pixel(display_pixel(y, x), video, key);
+			dest[x] = uint32_t(key) << 24 | (video & 0xffffff);
 		}
 	}
 }

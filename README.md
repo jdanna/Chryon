@@ -35,6 +35,8 @@ when it's on the unit.
 The emulator is built into the app. On the Emulator tab, press Run and it opens in its own window. Start the
 network first to reach it over FTP at 10.37.0.2.
 
+The Capture section records Video and Key live, as a matched pair of 59.94i ProRes files.
+
 ![The Emulator tab](docs/emulator-tab.png)
 
 Keys and details are in [emulator/README.md](emulator/README.md).

@@ -7,6 +7,7 @@ import { basename, isAbsolute, join } from 'path'
 import { promisify } from 'util'
 import type { EmulatorConfig, EmulatorStatus, NvramFile } from '@shared/types'
 import { NVRAM_SIZE } from '@shared/nvram'
+import { Capture } from './capture'
 
 const run = promisify(execFile)
 
@@ -18,6 +19,7 @@ const DEFAULT_IMAGE = 'maxine-default.chd'
 const CANCELLED = new Set([126, 127, 1223]) // pkexec: dialog dismissed, or not authorised. Windows: UAC declined
 const WINDOWS = process.platform === 'win32'
 const BINARY = WINDOWS ? 'maxine.exe' : 'maxine'
+const FFMPEG = WINDOWS ? 'ffmpeg.exe' : 'ffmpeg'
 const WINDOWS_ADAPTER = 'MAXINE Emulator'
 // What the driver prints after an export button saves a pair to its snapshot folder. Only these digits
 // and this suffix, so a line from the emulated machine can't name a file elsewhere.
@@ -27,6 +29,7 @@ const TAP_DOWNLOAD = 'https://build.openvpn.net/downloads/releases/tap-windows-9
 
 interface Layout {
   binary: string
+  ffmpeg: string
   plugins: string
   artwork: string
   roms: string
@@ -41,6 +44,7 @@ function layout(): Layout {
     const root = join(process.resourcesPath, 'emulator')
     return {
       binary: join(root, BINARY),
+      ffmpeg: join(root, FFMPEG),
       plugins: join(root, 'plugins'),
       artwork: join(root, 'artwork'),
       roms: join(root, 'roms'),
@@ -51,6 +55,7 @@ function layout(): Layout {
   const root = join(app.getAppPath(), 'emulator')
   return {
     binary: join(root, 'mame', BINARY),
+    ffmpeg: join(root, 'ffmpeg', FFMPEG),
     plugins: join(root, 'mame', 'plugins'),
     artwork: join(root, 'artwork'),
     roms: join(root, 'roms'),
@@ -61,6 +66,7 @@ function layout(): Layout {
 
 const imagePath = (cfg: EmulatorConfig): string => cfg.image || join(layout().roms, DEFAULT_IMAGE)
 const folderPath = (cfg: EmulatorConfig): string => cfg.folder || join(app.getPath('userData'), 'emulator')
+const captureFolderPath = (cfg: EmulatorConfig): string => cfg.captureFolder || join(folderPath(cfg), 'capture')
 const diskPath = (cfg: EmulatorConfig): string => join(folderPath(cfg), 'disk.chd')
 const nvramPath = (cfg: EmulatorConfig): string => join(folderPath(cfg), 'nvram', 'maxine', 'nvram')
 
@@ -150,6 +156,7 @@ export class Emulator {
   private snapFolder = ''
   private exportFolder: string | undefined
   private exports: Promise<void> = Promise.resolve()
+  private capture: Capture | null = null
 
   constructor(private win: BrowserWindow) {}
 
@@ -244,12 +251,14 @@ export class Emulator {
     const disk = await stat(diskPath(cfg)).catch(() => null)
     return {
       missing: existsSync(paths.binary) ? null : app.isPackaged ? 'This build has no emulator.' : 'Run emulator/build.sh first.',
+      captureMissing: existsSync(paths.ffmpeg) ? null : app.isPackaged ? 'This build has no ffmpeg.' : 'Run emulator/build-ffmpeg.sh first.',
       running: this.running,
       network: await networkUp(),
       tapMissing: WINDOWS && !tapInstalled(),
       image: imagePath(cfg),
       imageFound: existsSync(imagePath(cfg)),
       folder: folderPath(cfg),
+      captureFolder: captureFolderPath(cfg),
       diskSize: disk?.size ?? null
     }
   }
@@ -292,7 +301,7 @@ export class Emulator {
     const child = spawn(paths.binary, args, {
       cwd: folder,
       env: { ...process.env, MAXINE_LOG_STDOUT: '1', ...(paths.lib ? { LD_LIBRARY_PATH: libraryPath } : {}) },
-      stdio: [WINDOWS ? 'pipe' : 'ignore', 'pipe', 'pipe']
+      stdio: ['pipe', 'pipe', 'pipe']
     })
     child.stdin?.on('error', () => {}) // a pipe that broke because it exited, which 'exit' reports
     this.child = child
@@ -306,6 +315,7 @@ export class Emulator {
       const finished = (message: string): void => {
         if (this.child !== child) return
         this.child = null
+        void this.capture?.stop() // ffmpeg finishes the file from what arrived
         this.addLine(message)
         this.send('emulator:state', false)
         resolve()
@@ -319,13 +329,33 @@ export class Emulator {
     this.send('emulator:state', true)
   }
 
+  async startCapture(cfg: EmulatorConfig): Promise<void> {
+    if (!this.child) throw new Error('Run the emulator first.')
+    this.capture ??= new Capture(
+      layout().ffmpeg,
+      (line) => {
+        if (this.child?.stdin?.writable) this.child.stdin.write(`${line}\n`)
+      },
+      (line) => this.addLine(line),
+      (state) => this.send('emulator:capture', state)
+    )
+    await this.capture.start(captureFolderPath(cfg))
+  }
+
+  async stopCapture(): Promise<void> {
+    await this.capture?.stop()
+  }
+
   /**
    * SIGTERM is what saves the NVRAM: the driver turns it into a normal exit. Node's kill() on Windows
-   * just ends the process, so there the driver watches for stdin closing instead.
+   * just ends the process, so there the driver watches for stdin closing instead. A capture finishes
+   * first, so quitting the app leaves both files readable.
    */
   async stop(): Promise<void> {
     const child = this.child
     if (!child) return
+    await this.stopCapture()
+    if (this.child !== child) return
     if (WINDOWS) child.stdin!.end()
     else child.kill('SIGTERM')
     const timer = setTimeout(() => {
@@ -375,12 +405,19 @@ export function registerEmulator(win: BrowserWindow): Emulator {
   ipcMain.handle('emulator:status', (_, cfg: EmulatorConfig) => emulator.status(cfg))
   ipcMain.handle('emulator:start', (_, cfg: EmulatorConfig) => emulator.start(cfg))
   ipcMain.handle('emulator:stop', () => emulator.stop())
+  ipcMain.handle('emulator:capture-start', (_, cfg: EmulatorConfig) => emulator.startCapture(cfg))
+  ipcMain.handle('emulator:capture-stop', () => emulator.stopCapture())
   ipcMain.handle('emulator:network', (_, up: boolean) => emulator.setNetwork(up))
   ipcMain.handle('emulator:nvram-read', (_, cfg: EmulatorConfig) => emulator.readNvram(cfg))
   ipcMain.handle('emulator:nvram-write', (_, cfg: EmulatorConfig, data: Uint8Array) => emulator.writeNvram(cfg, data))
   ipcMain.handle('emulator:open-folder', async (_, cfg: EmulatorConfig) => {
     await mkdir(folderPath(cfg), { recursive: true })
     await shell.openPath(folderPath(cfg))
+  })
+
+  ipcMain.handle('emulator:open-capture-folder', async (_, cfg: EmulatorConfig) => {
+    await mkdir(captureFolderPath(cfg), { recursive: true })
+    await shell.openPath(captureFolderPath(cfg))
   })
 
   ipcMain.handle('emulator:tap-download', () => shell.openExternal(TAP_DOWNLOAD))
@@ -399,6 +436,15 @@ export function registerEmulator(win: BrowserWindow): Emulator {
   ipcMain.handle('emulator:pick-folder', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog(win, {
       title: 'Choose where the saved image is kept',
+      buttonLabel: 'Use This Folder',
+      properties: ['openDirectory', 'createDirectory']
+    })
+    return canceled ? null : filePaths[0]
+  })
+
+  ipcMain.handle('emulator:pick-capture-folder', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+      title: 'Choose where captures are saved',
       buttonLabel: 'Use This Folder',
       properties: ['openDirectory', 'createDirectory']
     })

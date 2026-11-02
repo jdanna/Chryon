@@ -1,6 +1,6 @@
 {
   "name": "maxine-studio",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "description": "Convert TTF/OTF fonts to Chyron MAXINE machine fonts and upload them to the unit",
   "main": "./out/main/index.js",
   "author": "Joey D'Anna",

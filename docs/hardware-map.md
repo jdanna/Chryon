@@ -142,7 +142,8 @@ IDT7201 FIFOs (p5), palette 2K×25 (p6), VRAM (p13–17).
 | `+04` | Colour number: 0 black, 1 green, 2 blue, 3 cyan, 4 red, 5 yellow, 6 magenta, 7 white |
 | `+08` | Address, `row << 10 \| x`. 2048 rows, two banks of 1024 |
 | `+0c` | Data port |
-| `$10000`, `$11000` | Line tables, 1024 longs each, `row * $800` |
+| `+18` | Pixel port: reads pixels from the address, moving along the row |
+| `$10000`, `$11000` | Line tables for banks A and B, 1024 longs each, `row * $800 + x` |
 | `$20000` | Palette, `bank << 8 \| n`, 8 banks of 32, stored `$BBGGRR`. Entry 1 is the 75% colour, 2 the 50%, 3 up unexplained ramps |
 | `$30000` | A third table, purpose unknown |
 
@@ -158,8 +159,26 @@ colour chips this way, into the frame buffer rather than the overlay, so they re
 
 Message Compose redraws a row into the hidden bank, flips, and repeats on the other bank.
 
-Unknown: real edge colour (the model uses entry 2 of the face colour's bank), how face and edge
-share a 16-bit pixel (the model stores both), and how roll and crawl drive the hardware.
+**Reading `+18` gives the same `$KKBBGGRR` words.** It's the only register the firmware reads apart from the base
+register and one palette entry. Pressing ROLL arms a roll by copying the page from bank B to bank A, a row at a time
+from row 22: control `f9`, address bank B's row, 800 reads, control `e9`, address bank A's row, 800 writes in pixel mode.
+
+**A roll moves the line tables.** Tables A and B stay identical and start at identity. Each frame the firmware rewrites
+them from entry 23 up, which moves the picture 2 rows a field, so lines above that stay put. Control bit 1 toggles every
+frame.
+
+**A crawl moves x in the line tables.** It changes only the crawl's lines, 228 to 280 in the test, by 2 pixels a field,
+and writes no pixels while it runs: the text was drawn ahead into 720-pixel strips, one in each bank. The hidden table's
+x stays 720 behind, as x + 1328 of 2048, so it wraps to 0 just where the shown strip ends, and the picture continues from
+the other bank there. When the shown x reaches 720, control bit 0 flips and the firmware points the other table at the
+next strip. That's inferred from the values, and which logic does it on the board isn't known.
+
+**Capture conventions.** The driver has no field parity, and the video board isn't modelled, so a capture's lower-field-first
+order is the 486-line NTSC standard, and its 10:11 tag is Rec. 601's value, not a measurement. Each field is sampled 21
+lines after the field tick, on an exact 60000/1001 Hz.
+
+Unknown: real edge colour (the model uses entry 2 of the face colour's bank) and how face and edge
+share a 16-bit pixel (the model stores both).
 
 Also present, as plain memory in the emulator: `$81200000`–`$81201fff`, `$81202000`–`ff`, and
 `$81203000`–`$81205fff` (video board). HWINIT tests `$81202000` with `$aa55`. `$81202100` (601 board) and

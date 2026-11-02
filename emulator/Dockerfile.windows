@@ -16,3 +16,5 @@ RUN curl -fsSL -o /tmp/sdl.tar.gz https://github.com/libsdl-org/SDL/releases/dow
     cp /tmp/SDL2-2.32.10/x86_64-w64-mingw32/lib/libSDL2.a /tmp/SDL2-2.32.10/x86_64-w64-mingw32/lib/libSDL2main.a \
         /usr/x86_64-w64-mingw32/lib/ && \
     rm -rf /tmp/sdl.tar.gz /tmp/SDL2-2.32.10
+# Builds ffmpeg's fast paths. It's on its own line so adding it didn't rebuild what's above
+RUN apt-get update && apt-get install -y --no-install-recommends nasm

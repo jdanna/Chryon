@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { EmulatorConfig, EmulatorStatus } from '@shared/types'
+import type { CaptureState, EmulatorConfig, EmulatorStatus } from '@shared/types'
 import { errorMessage } from '../format'
 import type { LogKind } from './LogPanel'
 import NvramPanel from './NvramPanel'
@@ -17,13 +17,18 @@ interface Props {
   setStatus(status: string): void
 }
 
+const CAPTURE_IDLE: CaptureState = { active: false, seconds: 0, bytes: 0, behind: false }
+
 const megabytes = (bytes: number): string => `${(bytes / 1048576).toFixed(1)} MB`
+const elapsed = (seconds: number): string => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`
 
 export default function EmulatorTab({ settings, onSettings, log, setStatus }: Props): JSX.Element {
   const [status, setEmulatorStatus] = useState<EmulatorStatus | null>(null)
   const [lines, setLines] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [networkBusy, setNetworkBusy] = useState(false)
+  const [capture, setCapture] = useState(CAPTURE_IDLE)
+  const [captureBusy, setCaptureBusy] = useState(false)
   const output = useRef<HTMLDivElement>(null)
   const followOutput = useRef(true)
 
@@ -64,6 +69,8 @@ export default function EmulatorTab({ settings, onSettings, log, setStatus }: Pr
     [refresh, setStatus]
   )
 
+  useEffect(() => api.onEmulatorCapture(setCapture), [])
+
   useEffect(() => {
     const el = output.current
     if (el && followOutput.current) el.scrollTop = el.scrollHeight
@@ -96,6 +103,27 @@ export default function EmulatorTab({ settings, onSettings, log, setStatus }: Pr
       log(`Could not ${up ? 'start' : 'stop'} the network: ${errorMessage(err)}`, 'error')
     }
     setNetworkBusy(false)
+  }
+
+  const startCapture = async (): Promise<void> => {
+    setCaptureBusy(true)
+    try {
+      await api.emulatorCaptureStart(settings)
+    } catch (err) {
+      log(`Could not start the capture: ${errorMessage(err)}`, 'error')
+    }
+    setCaptureBusy(false)
+  }
+
+  const stopCapture = async (): Promise<void> => {
+    setCaptureBusy(true)
+    await api.emulatorCaptureStop()
+    setCaptureBusy(false)
+  }
+
+  const pickCaptureFolder = async (): Promise<void> => {
+    const captureFolder = await api.pickCaptureFolder()
+    if (captureFolder) onSettings({ ...settings, captureFolder })
   }
 
   const pickImage = async (): Promise<void> => {
@@ -175,6 +203,54 @@ export default function EmulatorTab({ settings, onSettings, log, setStatus }: Pr
                   : api.platform === 'win32'
                     ? 'Asks for administrator approval. Stays set up until you stop it.'
                     : 'Asks for your password. Lasts until you restart your computer.'}
+          </div>
+        </div>
+
+        <div className={ui.sectionHeader}>
+          Capture
+          <span className={ui.sectionMeta}>{capture.active ? 'recording' : 'stopped'}</span>
+        </div>
+        <div className={styles.block}>
+          {capture.active ? (
+            <button className={`${ui.btn} ${styles.wide}`} disabled={captureBusy} onClick={stopCapture}>
+              {captureBusy ? 'Finishing…' : 'Stop capture'}
+            </button>
+          ) : (
+            <button className={`${ui.btn} ${styles.wide}`} disabled={captureBusy || !running || !!status?.captureMissing} onClick={startCapture}>
+              Start capture
+            </button>
+          )}
+          {capture.active && (
+            <span className={`${ui.mono} ${styles.pathValue}`}>
+              {elapsed(capture.seconds)}, {megabytes(capture.bytes)}
+            </span>
+          )}
+          {capture.behind && (
+            <div className={`${styles.note} ${ui.hintWarn}`}>The emulator is behind real time. Every field is still being saved.</div>
+          )}
+          {status?.captureMissing ? (
+            <div className={`${styles.note} ${ui.hintWarn}`}>{status.captureMissing}</div>
+          ) : (
+            !capture.active && <div className={styles.note}>Records Video and Key as ProRes 422 HQ, 720×486 at 59.94i, up to about 1 GB a minute.</div>
+          )}
+          <div className={styles.path}>
+            <span className={styles.pathLabel}>Capture folder</span>
+            <span className={`${ui.mono} ${styles.pathValue}`} title={status?.captureFolder}>
+              {status?.captureFolder}
+            </span>
+            <div className={styles.buttons}>
+              <button className={ui.btnSmall} disabled={capture.active} onClick={pickCaptureFolder}>
+                Browse…
+              </button>
+              {settings.captureFolder && (
+                <button className={ui.btnSmall} disabled={capture.active} onClick={() => onSettings({ ...settings, captureFolder: '' })}>
+                  Use default
+                </button>
+              )}
+              <button className={ui.btnSmall} onClick={() => api.openCaptureFolder(settings)}>
+                Open
+              </button>
+            </div>
           </div>
         </div>
 

@@ -10,6 +10,7 @@ right, and a clickable panel of MAXINE! keys is below them.
 - Runs from the original disk
 - Message compose and other built-in apps fully work.
 - Exports Fill and Key as PNGs.
+- Captures Fill and Key live as 59.94i ProRes files.
 - Emulates a mouse and a WACOM SD510C tablet.
 - Includes 64 MB of expansion RAM.
 
@@ -43,20 +44,26 @@ your work is kept. Delete that file to start over. The default has software opti
 | Left Alt | ALT |
 | Esc | ESC |
 | Arrows | CURSOR |
-| Hold Insert, Home, Page Up | SHIFT ROW, CHAR, PAGE |
-| Page Down | XFER |
-| Numpad − | READ NEXT |
+| Print Screen, Scroll Lock, Pause | DEL ROW, INS ROW, CNTR ROW |
+| Insert, Home, Page Up | DEL CHAR, INS CHAR, CNTR PAGE |
+| Hold Delete, End, Page Down | SHIFT CHAR, SHIFT PAGE, SHIFT ROW |
 | Numpad Enter | READ |
-| Numpad + | RCD |
+| Numpad + | READ NEXT |
+| Numpad − | RCD |
 | Numpad * | DEL MSG |
+| Numpad / | BUILD |
 | Numpad . | CLR |
 | F1–F10 | F1–F10 |
 | F11, F12 | CRAWL, ROLL |
 | Numeric keypad | KEYPAD |
-| Fn+Delete, or Delete on a PC keyboard | ERASE, which clears the whole message |
 
-Everything else is on the panel. Its SHIFT keys stay latched until clicked again and apply to the arrow keys.
-Holding the host's Shift as well moves further. MODE SLCT opens the menu that exits to the Loader.
+Everything else is on the panel, such as ERASE, XFER, HOME and COLOR FONT. Its right side is laid out like a PC
+keyboard, with each key where its host key is. The SHIFT keys stay latched on the panel until clicked again, and apply
+to the arrow keys. Holding the host's Shift as well moves further. MODE SLCT opens the menu that exits to the Loader.
+
+A Mac laptop has no Print Screen, Scroll Lock, Pause or Insert, so those are panel keys there. Fn+arrows give Home, End,
+Page Up and Page Down, and Fn+Delete is Delete. Some desktops keep Print Screen for themselves, and the panel's DEL ROW
+works there too.
 
 Command-V pastes the clipboard as plain ASCII. On Windows, it's Right Alt+V, because Windows keeps Win+V.
 
@@ -126,6 +133,22 @@ On a Mac, the Export menu asks for a folder too: Command-E for Native, or Shift-
 Right Ctrl or Shift+Right Ctrl saves straight to the snapshot folder on any system: `snap/maxine/` in the saved image
 location in the app, or `emulator/run/snap/maxine/` from a checkout.
 
+### Capture
+
+The Capture section of the Emulator tab records Video and Key while the machine runs, as a matched pair of files:
+`capture-0001-video.mov` and `capture-0001-key.mov`. They start on the same frame and have the same length.
+
+- ProRes 422 HQ, about 1 GB a minute, with no audio.
+- 720×486, the frame buffer's own pixels, tagged 10:11.
+- 59.94i, lower field first. Each field is sampled at its own moment, so motion is real interlace.
+
+Time in the files is the machine's time. If your computer can't keep up, the machine slows down and the app says so,
+so no field is dropped or repeated.
+
+A capture refuses to start with under 1 GB free and stops itself under 500 MB, because a file can't be read until it's
+finished. Capture is only in the app. A checkout needs `emulator/build-ffmpeg.sh` run once, and a packaged app includes
+ffmpeg.
+
 ## Limitations
 
 - Tested on macOS and Ubuntu 24.04. Windows 10 and 11 x64 are new.
@@ -133,5 +156,6 @@ location in the app, or `emulator/run/snap/maxine/` from a checkout.
   and the Intelligent Interface haven't been tested past connecting.
 - No boot PROM dump: the driver loads the operating system from disk itself.
 - The edge colour, Prompts palette and 50 MHz CPU speed are guesses.
+- A capture's field order and 10:11 tag follow the NTSC standard. They haven't been measured on a real unit.
 - The clock and date can read wrongly.
 - Fn+Delete also switches to MAME's controls, and pressing it again switches back. In that mode Esc can quit.

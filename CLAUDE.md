@@ -367,14 +367,17 @@ python3 tools/phile.py ls emulator/roms/maxine-v11.01.img /SYSTEM/PROGRAMS
 
 - **Status 2026-11-02:** boots on a stub to the real Program Loader and Message Compose. Working:
   keyboard and mouse, 64 MB expansion RAM, font load, typing in colour, messages saved to and read
-  from disk, the frame buffer (`chyronfb.cpp`), Prompts and Color Edit screens, Video and Key export.
-  Not working: roll and crawl playout. `emulator/README.md` lists the gaps.
+  from disk, the frame buffer (`chyronfb.cpp`), Prompts and Color Edit screens, Video and Key export, roll and crawl,
+  live capture. `emulator/README.md` lists the gaps.
 - The machine has four outputs: Prompts, Color Edit, Video, Key. The window shows the first two, and
   Right Ctrl exports the others. Video and Key must stay clean of overlays. The panel's export buttons save to the
   snapshot folder and print `MAXINE_EXPORT`, then `saveExport` in `emulator.ts` asks for a folder and moves the pair,
   because Electron has a native picker everywhere and Linux has none a driver can rely on.
 - `artwork/make_layout.py` is the single key list, and generates the layout and `maxine_keys.h`. The
-  panel holds the keys with no obvious host key, so the arrows are host-only. Every key needs a unique
+  panel's right side copies a PC keyboard, with each key where its host key is, and the user chose the host keys on
+  2026-11-02, so check before moving one. The cursor keys are SVG shapes, because layout text uses each system's font.
+  Scroll Lock is INS ROW, so `machine_start` unbinds MAME's `UI_TOGGLE_UI`, which would turn on hotkeys like Esc to quit.
+  Every key needs a unique
   name, because MAME's Lua `port.fields` is keyed by name and duplicates silently vanish. The panel
   ports must stay `IPT_OTHER`: MAME locks out all `IPT_KEYBOARD` fields outside the one enabled keyboard
   (`generic_keyboard`, in `run/cfg/maxine.cfg`), and Lua presses and clicks bypass that lockout, so a test
@@ -412,6 +415,21 @@ python3 tools/phile.py ls emulator/roms/maxine-v11.01.img /SYSTEM/PROGRAMS
   To test host keys for real, run with a real window under `xvfb-run` and send `xdotool keydown`, a 120 ms wait and
   `keyup`: `xdotool key` is too short for MAME's input poll. `key_w` is the place to watch, because the firmware doesn't
   read keys from the DUART address a Lua tap can see. The firmware's key names have no centre-character key.
+- **Capture:** the driver sends one `$KKRRGGBB` stream, 720×486×4, from a writer thread (`fieldcapture.cpp`) through
+  MAME's `osd_file` socket to a Node server on `127.0.0.1` (`src/main/capture.ts`), which pipes it to ffmpeg. One stream
+  split by `-filter_complex` is why the two files can't drift apart. The clock is emulated time, so every field is
+  written: falling behind fills the 8-frame pool, slows the machine and shows a warning. Don't drop fields to keep up.
+  `setparams` sets the tags, because ffmpeg 7 takes colour tags from frames. The fields come from `render_field`,
+  sampled by `capture_field` 21 lines after `field_tick`, so they're real interlace. The app sends `capture <port>` and
+  `capture stop` on stdin, which is a pipe on all platforms. EOF quits on Windows only. Tested on 2026-11-02 in a Linux
+  AppImage and with `maxine.exe` and `ffmpeg.exe` under Wine, whose default prefix can hang, so use a fresh `WINEPREFIX`
+  with `WINEDLLOVERRIDES="mscoree,mshtml="`. It hasn't run on a Mac or real Windows, or in an editor.
+- `build-ffmpeg.sh` builds a 2 MB LGPL ffmpeg with only ProRes and what feeds it, from a pinned commit on GitHub. Never add
+  `--enable-gpl`, and `vendor-emulator.mjs` refuses a build that has it.
+- To test a roll: save pages with RCD, `$f1`. It refuses an address that exists, and the default disk has 1000 and 1001.
+  Then SET-UP `$ea`, ROLL `$d9`, ROLL to add a row, keypad From, CURSOR R `$8d`, keypad To, NEW LINE `$ce`, Q `$51`. ROLL
+  arms it and any key starts it. CRAWL `$d8` in place of ROLL does the same for a crawl. Look at the screen between
+  ROLL and the key too, because that's when the firmware copies the page between banks through the `+18` pixel port.
 - `tests/script.py` builds input scripts and `tests/drive.lua` plays them. Run them with `-window -video
   none -mouseprovider none -keyboardprovider none`. Any real window takes pointer events from the user's
   mouse despite the providers, which corrupts the test, and leaving out `-window` goes fullscreen.

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { MaxineApi, UploadProgress } from '@shared/types'
+import type { CaptureState, MaxineApi, UploadProgress } from '@shared/types'
 
 const api: MaxineApi = {
   platform: process.platform,
@@ -29,11 +29,15 @@ const api: MaxineApi = {
   emulatorStatus: (cfg) => ipcRenderer.invoke('emulator:status', cfg),
   emulatorStart: (cfg) => ipcRenderer.invoke('emulator:start', cfg),
   emulatorStop: () => ipcRenderer.invoke('emulator:stop'),
+  emulatorCaptureStart: (cfg) => ipcRenderer.invoke('emulator:capture-start', cfg),
+  emulatorCaptureStop: () => ipcRenderer.invoke('emulator:capture-stop'),
   emulatorNetwork: (up) => ipcRenderer.invoke('emulator:network', up),
   openTapDownload: () => ipcRenderer.invoke('emulator:tap-download'),
   pickEmulatorImage: () => ipcRenderer.invoke('emulator:pick-image'),
   pickEmulatorFolder: () => ipcRenderer.invoke('emulator:pick-folder'),
   openEmulatorFolder: (cfg) => ipcRenderer.invoke('emulator:open-folder', cfg),
+  pickCaptureFolder: () => ipcRenderer.invoke('emulator:pick-capture-folder'),
+  openCaptureFolder: (cfg) => ipcRenderer.invoke('emulator:open-capture-folder', cfg),
   resetEmulatorDisk: (cfg) => ipcRenderer.invoke('emulator:reset', cfg),
   readNvram: (cfg) => ipcRenderer.invoke('emulator:nvram-read', cfg),
   writeNvram: (cfg, data) => ipcRenderer.invoke('emulator:nvram-write', cfg, data),
@@ -46,6 +50,11 @@ const api: MaxineApi = {
     const handler = (_: unknown, running: boolean): void => listener(running)
     ipcRenderer.on('emulator:state', handler)
     return () => ipcRenderer.off('emulator:state', handler)
+  },
+  onEmulatorCapture: (listener) => {
+    const handler = (_: unknown, state: CaptureState): void => listener(state)
+    ipcRenderer.on('emulator:capture', handler)
+    return () => ipcRenderer.off('emulator:capture', handler)
   }
 }
 

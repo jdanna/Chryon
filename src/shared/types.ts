@@ -87,11 +87,24 @@ export interface EmulatorConfig {
   image: string
   /** Holds disk.chd, nvram/, cfg/ and snap/ for this machine. */
   folder: string
+  /** Where video captures go. Empty for capture/ in the folder above. */
+  captureFolder: string
+}
+
+export interface CaptureState {
+  active: boolean
+  /** The length of the files so far. */
+  seconds: number
+  bytes: number
+  /** The emulator is behind real time. Every field is still saved. */
+  behind: boolean
 }
 
 export interface EmulatorStatus {
   /** Why it can't run on this computer, or null if it can. */
   missing: string | null
+  /** Why it can't capture video, or null if it can. */
+  captureMissing: string | null
   running: boolean
   network: boolean
   /** Windows only: the network needs TAP-Windows, which the user installs. */
@@ -99,6 +112,7 @@ export interface EmulatorStatus {
   image: string
   imageFound: boolean
   folder: string
+  captureFolder: string
   /** Bytes, or null until the first run makes the saved image. */
   diskSize: number | null
 }
@@ -177,16 +191,22 @@ export interface MaxineApi {
   emulatorStatus(cfg: EmulatorConfig): Promise<EmulatorStatus>
   emulatorStart(cfg: EmulatorConfig): Promise<void>
   emulatorStop(): Promise<void>
+  emulatorCaptureStart(cfg: EmulatorConfig): Promise<void>
+  /** Resolves once both files are finished. */
+  emulatorCaptureStop(): Promise<void>
   /** Asks for the admin password. Resolves to whether the link is up afterwards. */
   emulatorNetwork(up: boolean): Promise<boolean>
   openTapDownload(): Promise<void>
   pickEmulatorImage(): Promise<string | null>
   pickEmulatorFolder(): Promise<string | null>
   openEmulatorFolder(cfg: EmulatorConfig): Promise<void>
+  pickCaptureFolder(): Promise<string | null>
+  openCaptureFolder(cfg: EmulatorConfig): Promise<void>
   /** Asks for confirmation in a native dialog. Resolves to false if declined. */
   resetEmulatorDisk(cfg: EmulatorConfig): Promise<boolean>
   readNvram(cfg: EmulatorConfig): Promise<NvramFile>
   writeNvram(cfg: EmulatorConfig, data: Uint8Array): Promise<void>
   onEmulatorLog(listener: (lines: string[]) => void): () => void
   onEmulatorState(listener: (running: boolean) => void): () => void
+  onEmulatorCapture(listener: (state: CaptureState) => void): () => void
 }

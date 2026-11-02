@@ -40,6 +40,7 @@
 
 #include "modules/lib/osdlib.h"
 
+#include <atomic>
 #include <bit>
 #include <csignal>
 #include <cstdio>
@@ -47,6 +48,7 @@
 #include "osdepend.h"
 
 #include <filesystem>
+#include <thread>
 
 #if defined(__APPLE__)
 #include <objc/message.h>
@@ -55,10 +57,12 @@
 
 #if defined(_WIN32)
 #include <io.h>
-#include <thread>
+#else
+#include <unistd.h>
 #endif
 
 #include "chyronfb.h"
+#include "fieldcapture.h"
 #include "maxine_keys.h"
 #include "mcchip.h"
 
@@ -90,17 +94,44 @@ static void request_quit(int)
 extern "C" __declspec(dllimport) int __stdcall AllowSetForegroundWindow(unsigned long process);
 static constexpr unsigned long ASFW_ANY = 0xffffffff;
 
-// Node can only terminate a process on Windows, which loses the NVRAM, so MAXINE! Studio closes
-// stdin instead. The low-level read matters: getchar() would hold a stream lock that exit() needs.
-static void quit_when_stdin_closes()
-{
-	char data;
-	while (_read(0, &data, 1) > 0)
-		;
-	s_quit_requested = 1;
-}
-
 #endif
+
+static constexpr unsigned RASTER_LINE_CLOCKS = 858; // at 13.5 MHz
+static constexpr unsigned FIRST_ACTIVE_LINE = 21;
+
+// A port to send a capture to, or CAPTURE_STOP, until the machine picks it up
+static constexpr int CAPTURE_STOP = -1;
+static std::atomic<int> s_capture_command{0};
+
+// MAXINE! Studio's commands, a line at a time: "capture <port>" and "capture stop". The low-level read
+// matters: getchar() would hold a stream lock that exit() needs. Node can only terminate a process on
+// Windows, which loses the NVRAM, so the app closes stdin there to quit. Elsewhere it sends SIGTERM, and
+// closing means the app has gone, which shouldn't lose the machine.
+static void read_commands()
+{
+	std::string line;
+	char data;
+#if defined(_WIN32)
+	while (_read(0, &data, 1) > 0)
+#else
+	while (::read(0, &data, 1) > 0)
+#endif
+	{
+		if (data != '\n')
+		{
+			line += data;
+			continue;
+		}
+		if (line == "capture stop")
+			s_capture_command = CAPTURE_STOP;
+		else if (line.rfind("capture ", 0) == 0)
+			s_capture_command = std::atoi(line.c_str() + 8);
+		line.clear();
+	}
+#if defined(_WIN32)
+	s_quit_requested = 1;
+#endif
+}
 
 // Read from a PAL on the real board. Licensed files on the archive's disk image carry this one.
 static constexpr uint16_t SITE_ID = 0x2192;
@@ -279,13 +310,15 @@ private:
 	TIMER_CALLBACK_MEMBER(heartbeat);
 
 	TIMER_CALLBACK_MEMBER(field_tick);
+	TIMER_CALLBACK_MEMBER(capture_field);
 	TIMER_CALLBACK_MEMBER(key_bit);
 	TIMER_CALLBACK_MEMBER(mouse_bit);
 	TIMER_CALLBACK_MEMBER(tablet_bit);
 	void key_w(uint8_t data);
 	void host_key(uint8_t data);
 	void paste_text(std::string const &text);
-	void quit_if_requested();
+	void poll_host();
+	void end_capture();
 	void tablet_frame(int x, int y, int buttons);
 	void update_tablet();
 	void mouse_move(int dx, int dy, int buttons);
@@ -357,6 +390,7 @@ private:
 	uint16_t m_lan_port_low = 0;
 	emu_timer *m_heartbeat = nullptr;
 	emu_timer *m_field_timer = nullptr;
+	emu_timer *m_capture_timer = nullptr;
 	emu_timer *m_key_timer = nullptr;
 	emu_timer *m_mouse_timer = nullptr;
 	emu_timer *m_tablet_timer = nullptr;
@@ -392,6 +426,9 @@ private:
 	uint8_t m_key_byte = 0;
 	unsigned m_export_count = 0;
 	bool m_export_held = false;
+	bool m_lower_field = false;
+	std::unique_ptr<field_capture> m_capture;
+	uint32_t *m_capture_frame = nullptr; // set between a frame's two fields
 	uint32_t m_panel_last[3]{};
 	int m_shift = -1;
 	int m_held_shift = -1;
@@ -588,19 +625,63 @@ uint32_t maxine_state::edit_update(screen_device &screen, bitmap_rgb32 &bitmap, 
 	return 0;
 }
 
-// The field interrupt also tells the firmware the video standard: it counts these for a
-// while, and fewer than 58 a second means 625 lines. Video board timing isn't modelled.
-void maxine_state::quit_if_requested()
+void maxine_state::poll_host()
 {
 	if (s_quit_requested)
 		machine().schedule_exit();
+
+	int const command = s_capture_command.exchange(0);
+	if (command)
+		end_capture();
+	if (command > 0)
+		m_capture = std::make_unique<field_capture>(command);
 }
 
+// A frame with only its first field is dropped, so the app gets whole frames
+void maxine_state::end_capture()
+{
+	m_capture_frame = nullptr;
+	m_capture.reset();
+}
+
+// Each field is taken at its own moment, as a raster would show it, so motion is really interlaced. A
+// 486-line frame's first line belongs to the later field, so a frame starts on the odd rows.
+TIMER_CALLBACK_MEMBER(maxine_state::capture_field)
+{
+	if (!m_capture)
+		return;
+	if (m_capture->failed())
+	{
+		end_capture();
+		return;
+	}
+
+	if (m_lower_field && !m_capture_frame)
+		m_capture_frame = m_capture->next_frame();
+	if (!m_capture_frame)
+		return;
+
+	m_fb->render_field(m_capture_frame, m_lower_field ? 1 : 0, field_capture::WIDTH, field_capture::HEIGHT);
+	if (!m_lower_field)
+	{
+		m_capture->submit_frame();
+		m_capture_frame = nullptr;
+	}
+}
+
+// The field interrupt also tells the firmware the video standard: it counts these for a
+// while, and fewer than 58 a second means 625 lines. Video board timing isn't modelled.
 TIMER_CALLBACK_MEMBER(maxine_state::field_tick)
 {
-	quit_if_requested();
+	poll_host();
 
 	bim_input_w<2>(ASSERT_LINE);
+
+	// Parity is ours, because nothing the firmware does here tells the fields apart. Picture starts
+	// some lines after this interrupt, by when the firmware's handler has run.
+	m_lower_field = !m_lower_field;
+	if (m_capture)
+		m_capture_timer->adjust(attotime::from_ticks(FIRST_ACTIVE_LINE * RASTER_LINE_CLOCKS, 13'500'000));
 
 #if defined(__APPLE__)
 	if (!m_export_menu_added)
@@ -1378,15 +1459,23 @@ void maxine_state::machine_start()
 	std::signal(SIGTERM, request_quit);
 	std::signal(SIGINT, request_quit);
 
+	// Scroll Lock is INS ROW, and MAME would also take it as the switch to its own hotkeys, such as Esc to quit
+	machine().ioport().set_type_seq(IPT_UI_TOGGLE_UI, 0, SEQ_TYPE_STANDARD, input_seq());
+
 	// For MAXINE! Studio's log field. error.log has no limit, and a stuck chip once wrote 11 GB of it.
 	if (std::getenv("MAXINE_LOG_STDOUT"))
 	{
-#if defined(_WIN32)
-		std::thread(quit_when_stdin_closes).detach();
+		// A hard reset comes back through here, and the thread is still reading
+		static bool commands_started = false;
+		if (!commands_started)
+		{
+			commands_started = true;
+			std::thread(read_commands).detach();
+		}
 		// field_tick stops while the machine is paused, and this doesn't
-		machine().add_notifier(MACHINE_NOTIFY_FRAME, machine_notify_delegate(&maxine_state::quit_if_requested, this));
-#else
-		std::signal(SIGPIPE, SIG_IGN); // losing the app shouldn't lose the machine
+		machine().add_notifier(MACHINE_NOTIFY_FRAME, machine_notify_delegate(&maxine_state::poll_host, this));
+#if !defined(_WIN32)
+		std::signal(SIGPIPE, SIG_IGN); // losing the app, or a capture, shouldn't lose the machine
 #endif
 		machine().add_logerror_callback([] (char const *text) { std::fputs(text, stdout); std::fflush(stdout); });
 	}
@@ -1395,7 +1484,8 @@ void maxine_state::machine_start()
 	m_mouse_timer = timer_alloc(FUNC(maxine_state::mouse_bit), this);
 	m_tablet_timer = timer_alloc(FUNC(maxine_state::tablet_bit), this);
 	m_field_timer = timer_alloc(FUNC(maxine_state::field_tick), this);
-	m_field_timer->adjust(attotime::from_hz(59.94), 0, attotime::from_hz(59.94));
+	m_field_timer->adjust(attotime::from_ticks(1001, 60000), 0, attotime::from_ticks(1001, 60000));
+	m_capture_timer = timer_alloc(FUNC(maxine_state::capture_field), this);
 	m_heartbeat = timer_alloc(FUNC(maxine_state::heartbeat), this);
 	m_heartbeat->adjust(attotime::from_seconds(1), 0, attotime::from_seconds(1));
 }
@@ -1444,9 +1534,9 @@ static INPUT_PORTS_START(maxine)
 
 	// Bits match the panel's shift order: CHAR, PAGE, ROW
 	PORT_START("HOSTHOLD")
-	PORT_BIT(1, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("Hold SHIFT CHAR") PORT_CODE(KEYCODE_HOME)
-	PORT_BIT(2, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("Hold SHIFT PAGE") PORT_CODE(KEYCODE_PGUP)
-	PORT_BIT(4, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("Hold SHIFT ROW") PORT_CODE(KEYCODE_INSERT)
+	PORT_BIT(1, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("Hold SHIFT CHAR") PORT_CODE(KEYCODE_DEL)
+	PORT_BIT(2, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("Hold SHIFT PAGE") PORT_CODE(KEYCODE_END)
+	PORT_BIT(4, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("Hold SHIFT ROW") PORT_CODE(KEYCODE_PGDN)
 
 	PORT_START("EXPORT")
 	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("Export Video and Key") PORT_CODE(KEYCODE_RCONTROL)

@@ -7,3 +7,5 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libx11-dev libxext-dev libxi-dev libxinerama-dev
 # Docker Desktop reports a folder made inside a mount as root's, and git refuses to use a repository like that
 RUN git config --system --add safe.directory '*'
+# Builds ffmpeg's fast paths. It's on its own line so adding it didn't rebuild what's above
+RUN apt-get update && apt-get install -y --no-install-recommends nasm

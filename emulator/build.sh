@@ -24,9 +24,10 @@ apply_patches "$HERE"/patches/*.patch
 # Windows is cross-compiled in emulator/Dockerfile.windows, with SDL linked in. It uses the SDL OSD
 # like the other platforms, because the Windows one puts the cursor back on every message pump.
 # The GUI subsystem keeps a console from opening. The arguments here override the make line below.
+# MAME clears ARCHITECTURE on an arm64 host, which would pick the 32-bit target, so it's set here.
 if [ "${MAXINE_TARGET:-}" = windows ]; then
     apply_patches "$HERE"/patches/windows/*.patch
-    set -- TARGETOS=windows OSD=sdl PLATFORM=x86 MINGW64=/usr USE_LIBSDL=0 USE_PCAP=0 USE_TAPTUN=1 TOOLS=0 \
+    set -- TARGETOS=windows ARCHITECTURE=_x64 OSD=sdl PLATFORM=x86 MINGW64=/usr USE_LIBSDL=0 USE_PCAP=0 USE_TAPTUN=1 TOOLS=0 \
         LDOPTS=-Wl,--subsystem,windows "$@"
 fi
 
@@ -46,8 +47,7 @@ if [ "$BUILD_KEY" != "$(cat .maxine-sources 2>/dev/null)" ]; then
     find build \( -path '*/src/osd' -o -name 'libosd_*' \) -prune -exec rm -rf {} + 2>/dev/null || true
 fi
 
-# Some MAME files take over 2.5 GB to compile. One killed for memory leaves an empty object that make
-# counts as finished, and the link then fails, so a small machine or Docker VM runs fewer jobs.
+# A small machine or Docker VM runs fewer jobs, because some MAME files take over 3 GB to compile
 JOBS=$(getconf _NPROCESSORS_ONLN)
 if [ -r /proc/meminfo ]; then
     FIT=$(awk '/^MemTotal/ { print int($2 / 2500000) }' /proc/meminfo)
@@ -55,8 +55,19 @@ if [ -r /proc/meminfo ]; then
 fi
 
 # The machine has no sound, and leaving the audio back ends out takes most of the libraries with them
-make -j"$JOBS" \
-    SUBTARGET=maxine SOURCES="$SOURCES" REGENIE=$REGENIE \
-    USE_LIBSDL=1 USE_PCAP=1 USE_QTDEBUG=0 NOWERROR=1 PTR64=1 \
-    NO_USE_PULSEAUDIO=1 NO_USE_PIPEWIRE=1 NO_USE_PORTAUDIO=1 NO_USE_MIDI=1 \
-    TOOLS=1 "$@"
+mame_make() {
+    make SUBTARGET=maxine SOURCES="$SOURCES" REGENIE=$REGENIE \
+        USE_LIBSDL=1 USE_PCAP=1 USE_QTDEBUG=0 NOWERROR=1 PTR64=1 \
+        NO_USE_PULSEAUDIO=1 NO_USE_PIPEWIRE=1 NO_USE_PORTAUDIO=1 NO_USE_MIDI=1 \
+        TOOLS=1 "$@"
+}
+
+# Even those jobs can run out of memory when the big files land together. A compile killed that way
+# leaves its object missing, or empty so that make counts it as finished, and only the archive or link
+# step fails. So the first pass carries on past failures, and the second builds what's left in turn.
+if ! mame_make -k -j"$JOBS" "$@"; then
+    echo "Retrying what failed, one file at a time"
+    find build -name '*.o' -size -513c -delete
+    REGENIE=0
+    mame_make -j1 "$@"
+fi

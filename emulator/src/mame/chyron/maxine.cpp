@@ -54,6 +54,7 @@
 #include "multibyte.h"
 
 #include <bit>
+#include <deque>
 
 #define LOG_REGS (1U << 1)
 #define LOG_CONSOLE (1U << 2)
@@ -67,16 +68,17 @@ namespace {
 // Read from a PAL on the real board. Licensed files on the archive's disk image carry this one.
 static constexpr uint16_t SITE_ID = 0x2192;
 
-// Visible areas, cropped to what's drawn so neither screen shows overscan. If these change,
-// so must artwork/make_layout.py. Exports use the full 720x486.
+// Visible areas. Prompts is cropped to what's drawn. Color Edit is the whole program raster, as
+// exports are, because the Palette tool draws to the bottom of it. If these change, so must
+// artwork/make_layout.py.
 static constexpr int PROMPT_LEFT = 92;
 static constexpr int PROMPT_RIGHT = 612;
 static constexpr int PROMPT_TOP = 20;
 static constexpr int PROMPT_BOTTOM = 472;
-static constexpr int EDIT_LEFT = 60;
-static constexpr int EDIT_RIGHT = 648;
-static constexpr int EDIT_TOP = 62;
-static constexpr int EDIT_BOTTOM = 466;
+static constexpr int EDIT_LEFT = 0;
+static constexpr int EDIT_RIGHT = 720;
+static constexpr int EDIT_TOP = 0;
+static constexpr int EDIT_BOTTOM = 486;
 
 // The firmware's cursor, as the blit position it gives the 34010. The arrow's tip is that position
 // less CURSOR_TIP. It starts each program at the right and bottom limits and stops at all four.
@@ -89,12 +91,17 @@ static constexpr int CURSOR_TIP_Y = 7;
 static constexpr int CURSOR_IDLE_FIELDS = 8;
 static constexpr int PASTE_FIELDS = 2;
 
-// Tablet units per Color Edit layout unit and per Prompts pixel, measured from Logo Compose's
-// crosshair and arrow. Its button 2 flips between the two.
-static constexpr double TABLET_EDIT_X_SCALE = 4.910;
-static constexpr double TABLET_EDIT_X_OFFSET = 8.95;
-static constexpr double TABLET_EDIT_Y_SCALE = 4.914;
-static constexpr double TABLET_EDIT_Y_ORIGIN = 591.3;
+// Tablet units per Color Edit raster pixel and per Prompts pixel, measured from Logo Compose's
+// crosshair and arrow. Its button 2 flips between the two. The firmware ignores lines outside its
+// window, which would leave the crosshair stuck, so the pointer is held to the edges of it. That
+// reaches raster x 51 to 662 and y 41 to 491.
+static constexpr double TABLET_EDIT_X_SCALE = 4.937;
+static constexpr double TABLET_EDIT_X_ORIGIN = 50.4; // tuned by aiming at it; the fit gives 50.66
+static constexpr double TABLET_EDIT_Y_SCALE = 5.489;
+static constexpr double TABLET_EDIT_Y_ORIGIN = 591.09;
+static constexpr int TABLET_EDIT_X_MAX = 3016;
+static constexpr int TABLET_EDIT_Y_MIN = 550;
+static constexpr int TABLET_EDIT_Y_MAX = 3019;
 static constexpr double TABLET_MENU_X_SCALE = 5.051;
 static constexpr double TABLET_MENU_Y_SCALE = 6.838;
 static constexpr double TABLET_MENU_Y_ORIGIN = 443.5;
@@ -733,8 +740,8 @@ void maxine_state::panel_key(uint16_t code)
 	m_shift_lamps[3] = m_tablet_mode ? 1 : 0;
 }
 
-// From the layout script: x << 16 | buttons << 12 | y in Prompts pixels, with bit 30 set and layout
-// units instead over Color Edit, or all ones elsewhere. Over Prompts, or either screen with the
+// From the layout script: x << 16 | buttons << 12 | y in Prompts pixels, with bit 30 set and raster
+// pixels instead over Color Edit, or all ones elsewhere. Over Prompts, or either screen with the
 // tablet, the host's pointer gives way to the firmware's. Buttons: bit 0 left, bit 1 right.
 void maxine_state::pointer_w(uint32_t data)
 {
@@ -800,7 +807,8 @@ void maxine_state::update_tablet()
 	if (m_pointer_active)
 	{
 		if (m_pointer_edit)
-			tablet_frame((m_pointer_x + TABLET_EDIT_X_OFFSET) * TABLET_EDIT_X_SCALE, (TABLET_EDIT_Y_ORIGIN - m_pointer_y) * TABLET_EDIT_Y_SCALE, pressed);
+			tablet_frame(std::clamp(int((m_pointer_x - TABLET_EDIT_X_ORIGIN) * TABLET_EDIT_X_SCALE), 0, TABLET_EDIT_X_MAX),
+					std::clamp(int((TABLET_EDIT_Y_ORIGIN - m_pointer_y) * TABLET_EDIT_Y_SCALE), TABLET_EDIT_Y_MIN, TABLET_EDIT_Y_MAX), pressed);
 		else
 			tablet_frame((m_pointer_x - PROMPT_LEFT + 7) * TABLET_MENU_X_SCALE, (TABLET_MENU_Y_ORIGIN - (m_pointer_y - PROMPT_TOP)) * TABLET_MENU_Y_SCALE, pressed);
 		m_tablet_pen = true;
@@ -1261,9 +1269,10 @@ void maxine_state::machine_start()
 
 void maxine_state::machine_reset()
 {
-	// emulator/net-up.sh's virtual Ethernet, if it's there. This comes after MAME's saved settings.
+	// emulator/net-up.sh's virtual Ethernet, if it's there: feth0 through pcap on a Mac, and on Linux
+	// the TAP device. This comes after MAME's saved settings.
 	for (auto const &device : machine().osd().list_network_devices())
-		if (device.description == "feth0" && m_lan->get_interface() != device.id)
+		if ((device.description == "feth0" || device.description == "TUN/TAP Device") && m_lan->get_interface() != device.id)
 			m_lan->set_interface(device.id);
 
 	boot_stub();

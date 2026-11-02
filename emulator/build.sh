@@ -31,7 +31,7 @@ if [ "$BUILD_KEY" != "$(cat .maxine-sources 2>/dev/null)" ]; then
     echo "$BUILD_KEY" > .maxine-sources
 fi
 
-make -j"$(sysctl -n hw.ncpu)" \
+make -j"$(getconf _NPROCESSORS_ONLN)" \
     SUBTARGET=maxine SOURCES="$SOURCES" REGENIE=$REGENIE \
-    USE_LIBSDL=1 USE_PCAP=1 NOWERROR=1 PTR64=1 \
+    USE_LIBSDL=1 USE_PCAP=1 USE_QTDEBUG=0 NOWERROR=1 PTR64=1 \
     TOOLS=1 "$@"

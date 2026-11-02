@@ -3,7 +3,7 @@
 Generates the window layout and the matching key table, so the clickable panel and the driver
 can't disagree. Writes artwork/maxine/default.lay and src/mame/chyron/maxine_keys.h.
 
-Each key: name lines, MAXINE key code, host key or None, and where it sits on the panel in
+Each key: name lines, MAXINE key code, host keys separated by spaces or None, and where it sits on the panel in
 (cluster, column, row[, width, height]) or None if it has no panel key. The panel has the keys
 with no obvious host key, in a compact arrangement of the real keyboard's blocks.
 """
@@ -35,7 +35,7 @@ KEYS = [
     (("CNTR", "PAGE"), 0xdf, None, ("edit", 2, 1)),
     (("ERASE",), 0xcd, "DEL", ("edit", 0, 2)),
     (("DEL", "MSG"), 0xf0, None, ("edit", 1, 2)),
-    (("RCD",), 0xf1, None, ("keypad", 3, 2)),
+    (("RCD",), 0xf1, "PLUS_PAD", ("keypad", 3, 2)),
     # Function block
     (("F1",), 0xd0, "F1", ("font", 0, 2)),
     (("F2",), 0xd1, "F2", ("font", 1, 2)),
@@ -73,7 +73,7 @@ KEYS = [
     (("1",), 0xc1, "1_PAD", ("keypad", 0, 2)),
     (("2",), 0xc2, "2_PAD", ("keypad", 1, 2)),
     (("3",), 0xc3, "3_PAD", ("keypad", 2, 2)),
-    (("READ",), 0xf8, "PGUP", ("keypad", 3, 3)),
+    (("READ",), 0xf8, "PGUP ENTER_PAD", ("keypad", 3, 3)),
     (("0",), 0xc0, "0_PAD", ("keypad", 0, 3, 2, 1)),
     (("CLR",), 0xca, None, ("keypad", 2, 3)),
     # On the host keyboard only
@@ -86,8 +86,8 @@ KEYS = [
 assert len(KEYS) <= 96
 
 # Screens, in layout units. Both are as tall as each other and show the visible areas in maxine.cpp
-# in their true shape: Prompts has square pixels, and Color Edit's 588x404 are 0.9 as wide as tall.
-PROMPTS_W, EDIT_W, SCREEN_H, GAP = 520, 592, 452, 8
+# in their true shape: Prompts has square pixels, and Color Edit's 720x486 are 0.9 as wide as tall.
+PROMPTS_W, EDIT_W, SCREEN_H, GAP = 520, 603, 452, 8
 WIDTH = PROMPTS_W + GAP + EDIT_W
 KEY_W, KEY_H, PITCH_X, PITCH_Y = 52, 30, 56, 33
 PANEL_Y = SCREEN_H + GAP
@@ -156,10 +156,10 @@ def layout():
 
 
 # The host pointer drives the firmware's arrow over Prompts, or the tablet over Color Edit. Coordinates
-# over Prompts are its visible area in maxine.cpp, and over Color Edit are layout units with bit 30 set.
+# over Prompts are its visible area in maxine.cpp, and over Color Edit are raster pixels with bit 30 set.
 SCRIPT = '''<script><![CDATA[
 local LEFT, TOP, WIDTH, HEIGHT = 92, 20, 520, 452
-local EDIT_WIDTH, EDIT_FLAG = 592, 0x40000000
+local EDIT_WIDTH, EDIT_HEIGHT, EDIT_FLAG = 720, 486, 0x40000000
 local POINTER_PORT, NO_POINTER = 0x8210400c, 0xffffffff
 
 file:set_resolve_tags_callback(function()
@@ -181,7 +181,7 @@ file:set_resolve_tags_callback(function()
 			memory:write_u32(POINTER_PORT, (px << 16) | ((buttons & 3) << 12) | py)
 		elseif eu >= 0 and eu < 1 and ev >= 0 and ev < 1 then
 			local ex = math.floor(eu * EDIT_WIDTH)
-			local ey = math.floor(ev * HEIGHT)
+			local ey = math.floor(ev * EDIT_HEIGHT)
 			memory:write_u32(POINTER_PORT, EDIT_FLAG | (ex << 16) | ((buttons & 3) << 12) | ey)
 		else
 			memory:write_u32(POINTER_PORT, NO_POINTER)
@@ -216,7 +216,7 @@ def key_table():
         for index, (name, code, host, place) in enumerate(KEYS):
             if index // 32 != port:
                 continue
-            code_part = f' PORT_CODE(KEYCODE_{host})' if host else ''
+            code_part = ''.join(f' PORT_CODE(KEYCODE_{key})' for key in (host or '').split())
             lines.append(f'\tPORT_BIT(1U << {index % 32}, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("{label(name, code)}"){code_part} \\')
         lines.append('')
     lines.append('#endif // MAME_CHYRON_MAXINE_KEYS_H')

@@ -25,7 +25,10 @@
     the key. Layer $8002 is an edge value for the pixel under the next record,
     without moving on.
 
-    With control bit 4 clear, Logo Compose writes one pixel per word instead.
+    With control bit 4 clear, each word is one pixel instead: $KKBBGGRR, the
+    key and a full colour that bypasses the palette, already multiplied by the
+    key. The Palette tool's bars and chips are drawn this way, and so are Logo
+    Compose's outlines. With bit 25 set as well, a word merges into the pixel.
 
 ***************************************************************************/
 
@@ -147,13 +150,17 @@ void chyron_fb_device::put(uint32_t data)
 	m_x += length;
 }
 
-// Logo Compose's antialiased outlines: the top byte of each word is the level of one pixel. It leaves
-// the palette empty, so these show as they are, in white, which is a guess at the real board.
+// A pixel in full colour, without the palette: $KKBBGGRR, in the palette's byte order. Logo Compose
+// strokes lines by overlapping 3x3 dabs of levels 7, $1f and $7f, with bit 25 set, and each would
+// erase its neighbour's brighter centre if it replaced the pixel. Those levels are 2^n-1, so OR and
+// max give the same result. Which the board does isn't known, and adding them would look brighter.
 void chyron_fb_device::put_pixel(uint32_t data)
 {
 	pixel &p = row(m_y)[m_x++ % ROW_PIXELS];
+	bool const merge = p.direct && (m_regs[REG_CONTROL] & CONTROL_MERGE);
+	p.color = (merge ? p.color : 0) | (swapendian_int32(data) >> 8);
+	p.key = (merge ? p.key : 0) | (data >> 24);
 	p.direct = 1;
-	p.key = data >> 24;
 	p.under = 0;
 }
 
@@ -204,7 +211,7 @@ void chyron_fb_device::output_pixel(pixel const &p, uint32_t &video, uint8_t &ke
 		out = mix(0, palette(p.under_index), p.under);
 	if (p.key)
 	{
-		out = mix(out, p.direct ? 0xffffff : palette(p.index), p.key);
+		out = p.direct ? p.color + mix(out, 0, p.key) : mix(out, palette(p.index), p.key);
 		k = 255 - (255 - k) * (255 - p.key) / 255;
 	}
 	video = out;

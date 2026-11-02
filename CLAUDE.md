@@ -15,6 +15,11 @@ reported that everything works on the unit; the one defect was a blank icon in t
 unit's font browser, fixed the same day (the footer holds a 30×30 icon as well as
 the 66×66 thumbnail, and the converter had left it empty).
 
+## Branching
+
+Keep all work on `main`, for both the Studio app and the emulator. Only branch when
+the user says to.
+
 ## Assets
 
 - `fonts/` — 36 original font files pulled from the MAXINE, named as dotfiles
@@ -336,7 +341,12 @@ python3 tools/phile.py ls emulator/roms/maxine-v11.01.img /SYSTEM/PROGRAMS
 - The frame buffer's data port takes font file records directly, so `tools/maxine_font.py` is a good
   oracle for it.
 - **It's an MVME162, not a 167.** Earlier notes in the repo history said 167.
-- Networking: `net-up.sh` (root, once per reboot) makes a `feth0`/`feth1` pair and opens `/dev/bpf*`. The driver
+- Networking on Linux: `net-up.sh` makes a TAP named `tap-mess-<uid>-0`, the only name MAME's taptun opens, and the
+  driver attaches to the device described as `TUN/TAP Device`. Confirmed 2026-11-02 in a throwaway Docker container
+  with its own network, running net-up.sh itself: ping, active FTP, a font read back byte-identical, STOR and DELE.
+  It hasn't been run on the host, where a firewall could still block active FTP. AppArmor blocks `unshare -Urn`
+  on Ubuntu, so a container is how to test this without sudo.
+- Networking on macOS: `net-up.sh` (root, once per reboot) makes a `feth0`/`feth1` pair and opens `/dev/bpf*`. The driver
   attaches to `feth0` through MAME's pcap backend whenever it exists. macOS has no tap, and MAME's taptun isn't
   built here. `patches/*.patch` are applied to the MAME checkout by `build.sh`.
   Confirmed 2026-11-02 from the Mac at 10.37.0.1: ping, FTP in active mode, a 251 KB font read back byte-identical,
@@ -359,6 +369,9 @@ python3 tools/phile.py ls emulator/roms/maxine-v11.01.img /SYSTEM/PROGRAMS
   `cpu.debug:bpset(addr, cond, 'logerror "...",d0; g')` logs to `error.log` (`-log`), and a breakpoint
   on `$ffe00024`, the `TRAP #11` entry, traces every pSOS+ call. `LOG_REGS`, `LOG_SCSI` and
   `LOG_HEARTBEAT` in `maxine.cpp` are off by default; turn them on with `VERBOSE`.
+- Scripted tablet tests need NVRAM seeded first (`$262` = 1, `$411` = 1, `$218` = `4b 00 82 01`), because a blank one
+  leaves the port unset. A configured port also has no boot warning, so drop `script.py`'s opening `540 key 20`, or
+  it launches Message Compose. Run them one at a time: two side by side dropped Logo Compose into menu mode once.
 - pSOS+ fatal errors land in pROBE+, which then loops reading the console for `S`, so a stack in
   `$ffe1c7ea` means something failed earlier.
 

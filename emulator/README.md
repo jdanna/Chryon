@@ -15,7 +15,8 @@ right, and a clickable panel of MAXINE! keys is below them.
 
 ## Instructions
 
-Needs Xcode command line tools, Python 3 and SDL2 (`brew install sdl2`). The first build takes a long time.
+On a Mac, it needs Xcode command line tools, Python 3 and SDL2 (`brew install sdl2`). On Ubuntu, it needs
+`sudo apt install libsdl2-dev libsdl2-ttf-dev libasound2-dev libpcap-dev`. The first build takes a long time.
 
 ```bash
 emulator/build.sh
@@ -37,7 +38,8 @@ your work is kept. Delete that file to start over. The default has software opti
 | Esc | ESC |
 | Arrows | CURSOR |
 | Home | HOME |
-| Page Up | READ |
+| Page Up, Numpad Enter | READ |
+| Numpad + | RCD |
 | Page Down | CHNG |
 | End | READ NEXT |
 | Insert | XFER |
@@ -67,20 +69,31 @@ close it. Press `?` in Logo Compose for the other keys.
 
 ### Network
 
-On a Mac, run this once after each reboot. It needs your password.
+Run this once after each reboot, on a Mac or Linux. It needs your password.
 
 ```bash
 sudo emulator/net-up.sh
 ```
 
-It creates a virtual Ethernet pair and gives your Mac 10.37.0.1. Start the emulator and the MAXINE is at
+It creates a virtual Ethernet link and gives your computer 10.37.0.1. Start the emulator and the MAXINE is at
 10.37.0.2. Its disk needs the Networking option, which the default disk has. Change the MAXINE's address in
 the Loader's Setup, under Network.
 
-FTP takes any login and works in active mode only, as on the real unit. Fonts are in `/MAXINE/MACHINE`.
+On Linux, the link is a TAP device called `tap-mess-<your user ID>-0`, so run the emulator as the user who ran
+the script, not as root.
 
-Telnet closes the connection until `/SYSTEM/ETC/TELNETD.CFG` allows your Mac, which takes effect on the next
-reboot of the emulator. Upload it over FTP. See `docs/remote-control-research.md` for the format.
+To check it, wait for the Loader, then run `ping 10.37.0.2`. FTP starts a few seconds after ping does.
+
+FTP takes any login and works in active mode only, as on the real unit. Fonts are in `/MAXINE/MACHINE`. In
+active mode the MAXINE connects back to your computer, so a firewall has to allow that. If logging in works but
+listing a folder hangs, that's the likely cause. With ufw on Linux:
+
+```bash
+sudo ufw allow in on tap-mess-$(id -u)-0
+```
+
+Telnet closes the connection until `/SYSTEM/ETC/TELNETD.CFG` allows your computer, which takes effect on the
+next reboot of the emulator. Upload it over FTP. See `docs/remote-control-research.md` for the format.
 
 ### Export
 
@@ -90,10 +103,10 @@ at 648×486 for square-pixel tools.
 
 ## Limitations
 
-- Only tested on macOS.
-- Networking is only set up for macOS, and the Mac can only reach the MAXINE, not the other way round to the
-  wider network. Telnet login and the Intelligent Interface haven't been tested past connecting.
+- Tested on macOS and Ubuntu 24.04.
+- Your computer can reach the MAXINE, but the MAXINE can't reach the wider network through it. Telnet login
+  and the Intelligent Interface haven't been tested past connecting.
 - No boot PROM dump: the driver loads the operating system from disk itself.
-- The edge colour, Prompts palette, Logo Compose outline colour and 50 MHz CPU speed are guesses.
+- The edge colour, Prompts palette and 50 MHz CPU speed are guesses.
 - The clock and date can read wrongly.
 - Fn+Delete also switches to MAME's controls, and pressing it again switches back. In that mode Esc can quit.

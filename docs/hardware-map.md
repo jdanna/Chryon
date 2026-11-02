@@ -119,8 +119,9 @@ The MAXINE has four: **Prompts** (the UI), **Color Edit** (text plus cursor, saf
 chip overlays), **Video** (clean text) and **Key** (the matte).
 
 Program video is NTSC 720x486, with pixels 0.9 as wide as tall. Prompts runs on a 12 MHz pixel clock, which
-is within about 1% of square. At 592 layout units wide by 452 tall, Color Edit matches the tablet, whose units
-are square: its X and Y scales come out at 4.910 and 4.914.
+is within about 1% of square. Color Edit shows the whole raster, because the Palette tool draws its colour
+chips from row 453 to 492, at 603 layout units wide by 452 tall. The tablet's units are square: its scales
+per raster pixel and line, 4.937 and 5.489, differ by the same 0.9.
 
 Prompts and the overlay share the 34010's 4-bit pixels. The top three bits are Prompts and bit 0 is
 the overlay, kept apart with PMASK: `$1111` for Prompts, `$eeee` for the overlay. MAME's 34010 ignores
@@ -150,6 +151,10 @@ top 16 bits, intensity in 15..8, `(32 − length) << 3 | type`. The layer picks 
 2 edge) and the intensity is the key. `FB_DUAL` copies glyph data straight to the port, re-sending
 control every 8 words. Fills write one row, then in row mode: `3` latches the addressed row and each
 later record copies it to `length` rows.
+
+**With control bit 4 clear, each word is one pixel:** `$KKBBGGRR`, the key and a full colour that bypasses
+the palette, in the palette's byte order and already multiplied by the key. Message Compose's Palette tool (CNTL, P) draws its bars, swatch and
+colour chips this way, into the frame buffer rather than the overlay, so they reach Video and Key too.
 
 Message Compose redraws a row into the hidden bank, flips, and repeats on the other bank.
 
@@ -205,9 +210,10 @@ Logo Compose does and the Loader and Message Compose don't.
 An SD510C sends 18-character ASCII lines, `#,XXXXX,YYYYY,BB` with CR LF, which the firmware scales by
 2802/3020. BB is the button code, and 99 means the pen is out of range. Logo Compose uses it for the
 crosshair on Color Edit, the Point X and Y readouts and buttons, and needs a continuous stream to follow
-it. Button 2 flips between that draw mode and a menu mode with an arrow on Prompts. The crosshair is at
-view x = 520 + 0.182 X, y = 591.3 − 0.2035 Y, and the arrow's tip at Prompts x = 0.198 X − 7,
-y = 443.5 − 0.146 Y. Every line with a button down counts as a new press, about 20 a second, so the
+it. Button 2 flips between that draw mode and a menu mode with an arrow on Prompts. The crosshair's centre
+is at raster x = 50.66 + 0.20257 X, y = 591.09 − 0.18219 Y, within a pixel over 34 points, and the arrow's
+tip at Prompts x = 0.198 X − 7, y = 443.5 − 0.146 Y. Logo Compose drops a line with X above 3016 or Y
+outside 550 to 3019, and the crosshair stays where it was. Every line with a button down counts as a new press, about 20 a second, so the
 emulator sends one per click and waits for PSOS's frame flag at `$30cc4` to clear. Lifting the pen, line
 code 99, also drops it into menu mode.
 
@@ -217,9 +223,13 @@ outline, 8 S, 9 D delete point, 10 L select outline, 11 N undo, 12 ? help. So th
 everything, and the driver only needs buttons 1 and 2. To make an outline: O, Return, Right arrow, Return
 in the Outline Color dialog (a second Return alone lands on Escape), P at each point, then O to close.
 
-Outlines are drawn into the frame buffer one pixel at a time, with control bit 4 clear. The top byte of each
-word is the level. Logo Compose leaves the palette empty, so the emulator shows these in white without it,
-which is a guess at the real board.
+Outlines are drawn into the frame buffer one pixel at a time, with control bit 4 clear (see "Frame buffer
+board"). With Color 1 selected, a point marker is `$ff00ff00`, pure green. Lines are 3×3 dabs a pixel apart,
+`07 1f 07 / 1f 7f 1f / 07 1f 07` in both key and green, written with control bit 25 set. Bit 25 must combine
+a word with the pixel, or each dab would erase the last one's centre. The levels are 2ⁿ−1, so OR and max give
+the same result, and the emulator ORs. That's inferred, not confirmed on the board. Deleting a point clears
+its pixels with key 0 and bit 25 clear. At startup Logo Compose draws a grey box the same way, `$7f7f7f` at the
+centre of the dab, with corners near raster (54, 41) and (665, 386).
 
 ### Mouse cursor
 

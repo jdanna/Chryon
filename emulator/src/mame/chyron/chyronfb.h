@@ -49,6 +49,7 @@ private:
 	static constexpr uint32_t CONTROL_RUNS = 0x20; // clear: data port copies whole rows
 	static constexpr uint32_t CONTROL_RECORDS = 0x10; // clear with RUNS set: data port writes a pixel
 	static constexpr uint32_t CONTROL_BANK = 0x01;
+	static constexpr uint32_t CONTROL_MERGE = 0x02000000; // a pixel word merges into the pixel
 
 	// A pixel: palette address and key, and the same for an edge underneath
 	struct pixel
@@ -57,7 +58,8 @@ private:
 		uint8_t key;
 		uint8_t under;
 		uint8_t under_index;
-		uint8_t direct; // white at the key's level, without the palette
+		uint8_t direct; // use color, already multiplied by key, not the palette
+		uint32_t color;
 	};
 
 	pixel *row(unsigned y) const { return &m_vram[(y % ROWS) * ROW_PIXELS]; }

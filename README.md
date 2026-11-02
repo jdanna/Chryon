@@ -4,8 +4,6 @@ A desktop app that converts fonts for the Chyron MAXINE! and other Infinit! seri
 
 ![Comic Sans on a Sony CRT, with the MAXINE! control screen beside it](docs/maxine-crt.jpg)
 
-<img src="docs/maxine-font-load.jpg" alt="Comic Sans MS listed in the MAXINE! Font Load Utility" width="480">
-
 ## Preview a font
 
 Choose any font installed on your computer, or drop in a TTF, OTF or TTC file. 

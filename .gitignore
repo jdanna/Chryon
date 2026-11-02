@@ -43,3 +43,13 @@ __pycache__/
 
 # fonts uploaded through the old web GUI
 experiments/uploaded-fonts/
+
+# Emulator: MAME checkout, working copies, and firmware. The 11.01 disk images are preserved here on
+# purpose; PROM dumps must never reach this public repo.
+emulator/mame/
+emulator/roms/*
+emulator/run/
+*.chd
+*.img
+!emulator/roms/maxine-v11.01.chd
+!emulator/roms/maxine-default.chd

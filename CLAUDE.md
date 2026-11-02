@@ -303,6 +303,57 @@ is the confirming action everywhere in this app. Steps are JSON, see
 `fill`, `click`, `select`, `wait`, `eval`/`expect`, `shot`. `launch({ binary })`
 drives a packaged app, with a visible window and the real temp folder.
 
+## Emulator (`emulator/`)
+
+A MAME driver for the whole machine, as an overlay on a pinned MAME master commit (the NCR53C710
+model isn't in a release yet). `emulator/README.md` has build and run steps. Hardware facts are in
+`docs/hardware-map.md`, which is the place to add more.
+
+```bash
+emulator/build.sh             # clones MAME to emulator/mame on first run; later builds take a minute
+emulator/run.sh               # add -debug for the MAME debugger
+emulator/tests/run-test.sh    # headless boot check
+python3 tools/phile.py ls emulator/roms/maxine-v11.01.img /SYSTEM/PROGRAMS
+```
+
+- **Status 2026-11-02:** boots on a stub to the real Program Loader and Message Compose. Working:
+  keyboard and mouse, 64 MB expansion RAM, font load, typing in colour, messages saved to and read
+  from disk, the frame buffer (`chyronfb.cpp`), Prompts and Color Edit screens, Video and Key export.
+  Not working: roll and crawl playout, networking. `emulator/README.md` lists the gaps.
+- The machine has four outputs: Prompts, Color Edit, Video, Key. The window shows the first two, and
+  Right Ctrl exports the others. Video and Key must stay clean of overlays.
+- `artwork/make_layout.py` is the single key list, and generates the layout and `maxine_keys.h`. The
+  panel holds the keys with no obvious host key, so the arrows are host-only. Every key needs a unique
+  name, because MAME's Lua `port.fields` is keyed by name and duplicates silently vanish. The panel
+  ports must stay `IPT_OTHER`: MAME locks out all `IPT_KEYBOARD` fields outside the one enabled keyboard
+  (`generic_keyboard`, in `run/cfg/maxine.cfg`), and Lua presses and clicks bypass that lockout, so a test
+  needs `field:set_input_seq` to exercise the host path.
+- The mouse isn't captured: the layout script writes the host pointer to a test port and
+  `update_mouse()` steers the firmware's cursor to it with serial mouse packets. See "Mouse cursor" in
+  `docs/hardware-map.md` for how it stays lined up.
+- The frame buffer's data port takes font file records directly, so `tools/maxine_font.py` is a good
+  oracle for it.
+- **It's an MVME162, not a 167.** Earlier notes in the repo history said 167.
+- There's no boot PROM dump. `boot_stub()` in `maxine.cpp` loads `PSOS` at `$3000` and starts it
+  through the reset vectors, which is meant to stay as a supported path.
+- Driver-local devices go in `emulator/src/mame/chyron/`, and `build.sh` picks up new `.cpp` files.
+  That keeps MAME's own build scripts unpatched.
+- `emulator/mame`, `emulator/roms`, `emulator/run`, `*.chd` and `*.img` are gitignored, except two images
+  the user chose on 2026-11-02 to preserve here: `emulator/roms/maxine-v11.01.chd`, the clean archive.org
+  image, and `emulator/roms/maxine-default.chd`, a snapshot of their disk with options enabled, which is what
+  `run.sh` starts from. Both are read-only, so never modify them by accident. PROM dumps must never be
+  committed, and a real unit's site ID stays out of the repo.
+- `tests/script.py` builds input scripts and `tests/drive.lua` plays them. Run them with `-window -video
+  none -mouseprovider none -keyboardprovider none`. Any real window takes pointer events from the user's
+  mouse despite the providers, which corrupts the test, and leaving out `-window` goes fullscreen.
+  `tools/dis68.py` disassembles firmware, and modules are at file offset = address − load base.
+- Bring-up technique: `-debug -debugger none -autoboot_script x.lua` runs headless with breakpoints.
+  `cpu.debug:bpset(addr, cond, 'logerror "...",d0; g')` logs to `error.log` (`-log`), and a breakpoint
+  on `$ffe00024`, the `TRAP #11` entry, traces every pSOS+ call. `LOG_REGS`, `LOG_SCSI` and
+  `LOG_HEARTBEAT` in `maxine.cpp` are off by default; turn them on with `VERBOSE`.
+- pSOS+ fatal errors land in pROBE+, which then loops reading the console for `S`, so a stack in
+  `$ffe1c7ea` means something failed earlier.
+
 ## Open questions (need hardware)
 
 1. Meaning of the glyph-record spacing hints (s8 at byte 1, u16 bits 15..4)
@@ -315,6 +366,8 @@ drives a packaged app, with a visible window and the real temp folder.
 4. Which pacing setting stops the batch-upload lockups (see the FTP notes), and
    whether a hung unit comes back on its own or needs a power cycle. Any cleaner
    capture than a phone photo.
+
+5. Is the CPU card really an MVME162, and is Chyron's boot code in its EPROM or Flash?
 
 ## History
 
@@ -338,3 +391,6 @@ drives a packaged app, with a visible window and the real temp folder.
   Found the 30×30 browser icon in the footer and made the converter draw it. A multi-font
   upload hung the unit; FTP became one persistent session with a Disconnect button,
   and when that still locked up after three files, a pause between files was added.
+- 2026-11-01 (Opus): started the MAME emulator. Booted the 11.01 image to the Program Loader on a stub
+  boot, and found from the firmware's behaviour that the CPU card is an MVME162. Then keyboard,
+  mouse, frame buffer, Message Compose, and the output split, into 2026-11-02.

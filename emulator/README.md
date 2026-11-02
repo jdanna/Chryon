@@ -40,6 +40,7 @@ your work is kept. Delete that file to start over. The default has software opti
 | Home | HOME |
 | Page Up, Numpad Enter | READ |
 | Numpad + | RCD |
+| Numpad − | DEL MSG |
 | Page Down | CHNG |
 | End | READ NEXT |
 | Insert | XFER |

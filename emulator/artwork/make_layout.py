@@ -34,7 +34,7 @@ KEYS = [
     (("INS", "CHAR"), 0xde, None, ("edit", 1, 1)),
     (("CNTR", "PAGE"), 0xdf, None, ("edit", 2, 1)),
     (("ERASE",), 0xcd, "DEL", ("edit", 0, 2)),
-    (("DEL", "MSG"), 0xf0, None, ("edit", 1, 2)),
+    (("DEL", "MSG"), 0xf0, "MINUS_PAD", ("edit", 1, 2)),
     (("RCD",), 0xf1, "PLUS_PAD", ("keypad", 3, 2)),
     # Function block
     (("F1",), 0xd0, "F1", ("font", 0, 2)),

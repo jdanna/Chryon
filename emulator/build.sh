@@ -34,8 +34,16 @@ if [ "$BUILD_KEY" != "$(cat .maxine-sources 2>/dev/null)" ]; then
     find build \( -path '*/src/osd' -o -name 'libosd_*' \) -prune -exec rm -rf {} + 2>/dev/null || true
 fi
 
+# Some MAME files take over 2.5 GB to compile. One killed for memory leaves an empty object that make
+# counts as finished, and the link then fails, so a small machine or Docker VM runs fewer jobs.
+JOBS=$(getconf _NPROCESSORS_ONLN)
+if [ -r /proc/meminfo ]; then
+    FIT=$(awk '/^MemTotal/ { print int($2 / 2500000) }' /proc/meminfo)
+    if [ "$FIT" -lt "$JOBS" ]; then JOBS=$((FIT > 0 ? FIT : 1)); fi
+fi
+
 # The machine has no sound, and leaving the audio back ends out takes most of the libraries with them
-make -j"$(getconf _NPROCESSORS_ONLN)" \
+make -j"$JOBS" \
     SUBTARGET=maxine SOURCES="$SOURCES" REGENIE=$REGENIE \
     USE_LIBSDL=1 USE_PCAP=1 USE_QTDEBUG=0 NOWERROR=1 PTR64=1 \
     NO_USE_PULSEAUDIO=1 NO_USE_PIPEWIRE=1 NO_USE_PORTAUDIO=1 NO_USE_MIDI=1 \

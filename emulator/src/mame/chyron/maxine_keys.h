@@ -5,7 +5,7 @@
 
 #pragma once
 
-// MAXINE key code for each bit of PANEL0 to PANEL2. $100 up are the shift keys, the mouse/tablet switch, then the export buttons.
+// MAXINE key code for each bit of PANEL0 to PANEL2. $100 up are the shift keys, the mouse/tablet switch, the export buttons, then the second screen key.
 static constexpr uint16_t PANEL_KEYS[] = {
 	0x0ff, // MODE SLCT
 	0x0fe, // ESC
@@ -82,6 +82,7 @@ static constexpr uint16_t PANEL_KEYS[] = {
 	0x0f2, // BUILD
 	0x104, // EXPORT NATIVE
 	0x105, // EXPORT SQUARE PIXEL
+	0x106, // SECOND SCREEN
 };
 
 #define MAXINE_PANEL0_BITS \
@@ -164,5 +165,6 @@ static constexpr uint16_t PANEL_KEYS[] = {
 	PORT_BIT(1U << 8, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("BUILD") PORT_CODE(KEYCODE_SLASH_PAD) \
 	PORT_BIT(1U << 9, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("EXPORT NATIVE") \
 	PORT_BIT(1U << 10, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("EXPORT SQUARE PIXEL") \
+	PORT_BIT(1U << 11, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("SECOND SCREEN") PORT_CODE(KEYCODE_NUMLOCK) \
 
 #endif // MAME_CHYRON_MAXINE_KEYS_H

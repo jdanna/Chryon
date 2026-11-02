@@ -283,6 +283,7 @@ public:
 		, m_host_hold(*this, "HOSTHOLD")
 		, m_export(*this, "EXPORT")
 		, m_shift_lamps(*this, "shift%u", 0U)
+		, m_second_screen_label(*this, "second_screen")
 		, m_serial_duart(*this, "serial_duart")
 	{
 	}
@@ -381,6 +382,7 @@ private:
 	required_ioport m_host_hold;
 	required_ioport m_export;
 	output_finder<4> m_shift_lamps;
+	output_finder<> m_second_screen_label;
 	required_device<mc68681_device> m_serial_duart;
 
 	uint8_t m_vme_regs[0x200]{};
@@ -398,6 +400,8 @@ private:
 	uint8_t m_tablet_byte = 0;
 	int m_tablet_bit = -1;
 	bool m_tablet_mode = false;
+	enum { SHOW_COLOR_EDIT, SHOW_VIDEO, SHOW_KEY, SHOW_COUNT };
+	int m_second_screen = SHOW_COLOR_EDIT;
 	bool m_tablet_pen = false;
 	bool m_export_menu_added = false;
 	int m_tablet_buttons = 0;
@@ -603,10 +607,19 @@ uint32_t maxine_state::prompt_update(screen_device &screen, bitmap_rgb32 &bitmap
 }
 
 // Color Edit is the Video channel with the 34010 overlay on top, and is what an operator
-// composes on. Video and Key themselves are clean, for export.
+// composes on. Video and Key themselves are clean. The window's second screen can show either
+// in place of Color Edit.
 uint32_t maxine_state::edit_update(screen_device &screen, bitmap_rgb32 &bitmap, rectangle const &cliprect)
 {
+	if (m_second_screen == SHOW_KEY)
+	{
+		m_fb->render_key(bitmap, cliprect);
+		return 0;
+	}
+
 	m_fb->render_video(bitmap, cliprect);
+	if (m_second_screen == SHOW_VIDEO)
+		return 0;
 
 	for (int y = cliprect.min_y; y <= cliprect.max_y; y++)
 	{
@@ -720,6 +733,7 @@ TIMER_CALLBACK_MEMBER(maxine_state::field_tick)
 	for (int i = 0; i < 3; i++)
 		m_shift_lamps[i] = (shift == i) ? 1 : 0;
 	m_shift_lamps[3] = m_tablet_mode ? 1 : 0;
+	m_second_screen_label = m_second_screen;
 
 #if defined(_WIN32)
 	bool const paste_pressed = m_host_keys->read() == 6; // Right Alt and V, because Windows keeps Win+V
@@ -916,6 +930,10 @@ void maxine_state::panel_key(uint16_t code)
 	if (code == 0x104 || code == 0x105) // the export buttons
 	{
 		export_outputs(code == 0x105, std::string(), true);
+	}
+	else if (code == 0x106)
+	{
+		m_second_screen = (m_second_screen + 1) % SHOW_COUNT;
 	}
 	else if (code == 0x103)
 	{

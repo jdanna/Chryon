@@ -68,6 +68,7 @@
 <element name="key72"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><text string="BUILD"><bounds x="0.08" y="0.28" width="0.84" height="0.44"/><color red="0.93" green="0.93" blue="0.9"/></text></element>
 <element name="key73"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><text string="EXPORT"><bounds x="0.08" y="0.26" width="0.84" height="0.24"/><color red="0.93" green="0.93" blue="0.9"/></text><text string="NATIVE"><bounds x="0.08" y="0.5" width="0.84" height="0.24"/><color red="0.93" green="0.93" blue="0.9"/></text></element>
 <element name="key74"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><text string="EXPORT"><bounds x="0.08" y="0.14" width="0.84" height="0.24"/><color red="0.93" green="0.93" blue="0.9"/></text><text string="SQUARE"><bounds x="0.08" y="0.38" width="0.84" height="0.24"/><color red="0.93" green="0.93" blue="0.9"/></text><text string="PIXEL"><bounds x="0.08" y="0.62" width="0.84" height="0.24"/><color red="0.93" green="0.93" blue="0.9"/></text></element>
+<element name="key75"><rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect><rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect><rect state="2"><color red="0.75" green="0.6" blue="0.2"/></rect><text state="0" string="COLOR"><bounds x="0.08" y="0.1" width="0.84" height="0.38"/><color red="0.93" green="0.93" blue="0.9"/></text><text state="0" string="EDIT"><bounds x="0.08" y="0.52" width="0.84" height="0.38"/><color red="0.93" green="0.93" blue="0.9"/></text><text state="1" string="VIDEO"><bounds x="0.08" y="0.28" width="0.84" height="0.44"/><color red="0.93" green="0.93" blue="0.9"/></text><text state="2" string="KEY"><bounds x="0.08" y="0.28" width="0.84" height="0.44"/><color red="0.93" green="0.93" blue="0.9"/></text></element>
 <view name="MAXINE" showpointers="no"><bounds x="0" y="0" width="1131" height="632"/>
 <screen id="prompts" index="0"><bounds x="0" y="0" width="520" height="452"/></screen>
 <screen id="edit" index="1"><bounds x="528" y="0" width="603" height="452"/></screen>
@@ -138,6 +139,7 @@
 <element ref="key72" inputtag="PANEL2" inputmask="0x00000100"><bounds x="873" y="465" width="52" height="30"/></element>
 <element ref="key73" inputtag="PANEL2" inputmask="0x00000200"><bounds x="1067" y="465" width="52" height="63"/></element>
 <element ref="key74" inputtag="PANEL2" inputmask="0x00000400"><bounds x="1067" y="531" width="52" height="63"/></element>
+<element ref="key75" name="second_screen" inputtag="PANEL2" inputmask="0x00000800"><bounds x="817" y="465" width="52" height="30"/></element>
 </view>
 <script><![CDATA[
 local LEFT, TOP, WIDTH, HEIGHT = 92, 20, 520, 452

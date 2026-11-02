@@ -369,8 +369,8 @@ python3 tools/phile.py ls emulator/roms/maxine-v11.01.img /SYSTEM/PROGRAMS
   keyboard and mouse, 64 MB expansion RAM, font load, typing in colour, messages saved to and read
   from disk, the frame buffer (`chyronfb.cpp`), Prompts and Color Edit screens, Video and Key export, roll and crawl,
   live capture. `emulator/README.md` lists the gaps.
-- The machine has four outputs: Prompts, Color Edit, Video, Key. The window shows the first two, and
-  Right Ctrl exports the others. Video and Key must stay clean of overlays. The panel's export buttons save to the
+- The machine has four outputs: Prompts, Color Edit, Video, Key. The window shows Prompts on the left, and on the right
+  Color Edit, Video or Key, from the SECOND SCREEN key (`m_second_screen`). Right Ctrl exports Video and Key. Video and Key must stay clean of overlays. The panel's export buttons save to the
   snapshot folder and print `MAXINE_EXPORT`, then `saveExport` in `emulator.ts` asks for a folder and moves the pair,
   because Electron has a native picker everywhere and Linux has none a driver can rely on.
 - `artwork/make_layout.py` is the single key list, and generates the layout and `maxine_keys.h`. The

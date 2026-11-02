@@ -56,6 +56,7 @@ your work is kept. Delete that file to start over. The default has software opti
 | F1–F10 | F1–F10 |
 | F11, F12 | CRAWL, ROLL |
 | Numeric keypad | KEYPAD |
+| Num Lock, or Clear on a Mac keypad | Switches the right-hand screen, see below |
 
 Everything else is on the panel, such as ERASE, XFER, HOME and COLOR FONT. Its right side is laid out like a PC
 keyboard, with each key where its host key is. The SHIFT keys stay latched on the panel until clicked again, and apply
@@ -64,6 +65,10 @@ to the arrow keys. Holding the host's Shift as well moves further. MODE SLCT ope
 A Mac laptop has no Print Screen, Scroll Lock, Pause or Insert, so those are panel keys there. Fn+arrows give Home, End,
 Page Up and Page Down, and Fn+Delete is Delete. Some desktops keep Print Screen for themselves, and the panel's DEL ROW
 works there too.
+
+The panel's key in the Num Lock position switches the right-hand screen between Color Edit, Video and Key. It's labelled
+with what's showing, and lit on Video and Key. Those two are the clean outputs, so the cursor and text box aren't on
+them, and capture and export don't change with it. It goes back to Color Edit each time the emulator starts.
 
 Command-V pastes the clipboard as plain ASCII. On Windows, it's Right Alt+V, because Windows keeps Win+V.
 

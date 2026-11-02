@@ -12,7 +12,7 @@ from xml.sax.saxutils import escape
 
 HERE = Path(__file__).resolve().parent
 
-SHIFT_CHAR, SHIFT_PAGE, SHIFT_ROW, POINTER_SWITCH, EXPORT_NATIVE, EXPORT_SQUARE = 0x100, 0x101, 0x102, 0x103, 0x104, 0x105
+SHIFT_CHAR, SHIFT_PAGE, SHIFT_ROW, POINTER_SWITCH, EXPORT_NATIVE, EXPORT_SQUARE, SECOND_SCREEN = range(0x100, 0x107)
 
 KEYS = [
     # Mode
@@ -88,6 +88,8 @@ KEYS = [
     # Emulator only: for Linux and Windows, which have no Export menu
     (("EXPORT", "NATIVE"), EXPORT_NATIVE, None, ("export", 0, 0, 1, 2)),
     (("EXPORT", "SQUARE", "PIXEL"), EXPORT_SQUARE, None, ("export", 0, 2, 1, 2)),
+    # Emulator only: what the second screen shows. The driver's second_screen output picks the label.
+    (("SECOND", "SCREEN"), SECOND_SCREEN, "NUMLOCK", ("keypad", 0, 0)),
 ]
 
 assert len(KEYS) <= 96
@@ -112,6 +114,9 @@ for _name, _columns in CLUSTER_WIDTHS.items():
     _x += _columns * PITCH_X - (PITCH_X - KEY_W) + CLUSTER_GAP
 
 
+# Keys whose label follows an output, by the output's value
+STATE_LABELS = {POINTER_SWITCH: [("MOUSE",), ("TABLET",)], SECOND_SCREEN: [("COLOR", "EDIT"), ("VIDEO",), ("KEY",)]}
+
 # Degrees to turn the arrow, which points right, on the cursor keys. They're shapes, not text, because layout text
 # uses each system's own font and not all of them have arrows.
 ARROWS = {0x8f: 270, 0x8c: 180, 0x8d: 0, 0x8e: 90}
@@ -129,27 +134,30 @@ def text(string, x, y, w, h, color):
             f'<color {color}/></text>')
 
 
-def key_element(index, lines, tall, lit_name=None, degrees=None):
+def key_text(lines, tall):
     ink = 'red="0.93" green="0.93" blue="0.9"'
-    parts = [f'<element name="key{index}">',
-             '<rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect>',
-             '<rect state="1"><color red="0.75" green="0.6" blue="0.2"/></rect>']
+    if len(lines) == 1 and tall:
+        return [text(lines[0], 0.08, 0.38, 0.84, 0.24, ink)]
+    if len(lines) == 1:
+        return [text(lines[0], 0.08, 0.28, 0.84, 0.44, ink)]
+    if tall:
+        top = 0.5 - 0.12 * len(lines)
+        return [text(line, 0.08, top + row * 0.24, 0.84, 0.24, ink) for row, line in enumerate(lines)]
+    return [text(lines[0], 0.08, 0.1, 0.84, 0.38, ink), text(lines[1], 0.08, 0.52, 0.84, 0.38, ink)]
+
+
+def key_element(index, lines, tall, states=None, degrees=None):
+    """states is a label for each value of the key's output. Only the first is unlit."""
+    parts = [f'<element name="key{index}">', '<rect state="0"><color red="0.3" green="0.3" blue="0.32"/></rect>']
+    parts += [f'<rect state="{state}"><color red="0.75" green="0.6" blue="0.2"/></rect>'
+              for state in range(1, len(states) if states else 2)]
     if degrees is not None:
         parts.append(arrow(degrees))
-    elif lit_name:
-        parts.append(text(lines[0], 0.08, 0.28, 0.84, 0.44, ink).replace('<text ', '<text state="0" '))
-        parts.append(text(lit_name, 0.08, 0.28, 0.84, 0.44, ink).replace('<text ', '<text state="1" '))
-    elif len(lines) == 1 and tall:
-        parts.append(text(lines[0], 0.08, 0.38, 0.84, 0.24, ink))
-    elif len(lines) == 1:
-        parts.append(text(lines[0], 0.08, 0.28, 0.84, 0.44, ink))
-    elif tall:
-        top = 0.5 - 0.12 * len(lines)
-        for row, line in enumerate(lines):
-            parts.append(text(line, 0.08, top + row * 0.24, 0.84, 0.24, ink))
+    elif states:
+        for state, label in enumerate(states):
+            parts += [part.replace('<text ', f'<text state="{state}" ') for part in key_text(label, tall)]
     else:
-        parts.append(text(lines[0], 0.08, 0.1, 0.84, 0.38, ink))
-        parts.append(text(lines[1], 0.08, 0.52, 0.84, 0.38, ink))
+        parts += key_text(lines, tall)
     parts.append('</element>')
     return ''.join(parts)
 
@@ -161,13 +169,13 @@ def layout():
     for index, (lines, code, host, place) in enumerate(KEYS):
         if place is None:
             continue
-        out.append(key_element(index, lines, len(place) > 3 and place[4] > 1,
-                               "TABLET" if code == POINTER_SWITCH else None, ARROWS.get(code)))
+        out.append(key_element(index, lines, len(place) > 3 and place[4] > 1, STATE_LABELS.get(code), ARROWS.get(code)))
         cluster, column, row = place[:3]
         wide, tall = (place[3], place[4]) if len(place) > 3 else (1, 1)
         x0, y0 = CLUSTERS[cluster]
         port, mask = f'PANEL{index // 32}', 1 << (index % 32)
         name = f' name="shift{code - SHIFT_CHAR}"' if SHIFT_CHAR <= code <= POINTER_SWITCH else ''  # shift3 is the switch
+        name = ' name="second_screen"' if code == SECOND_SCREEN else name
         items.append(f'<element ref="key{index}"{name} inputtag="{port}" inputmask="0x{mask:08x}">'
                      f'<bounds x="{x0 + column * PITCH_X}" y="{y0 + row * PITCH_Y}" '
                      f'width="{KEY_W + (wide - 1) * PITCH_X}" height="{KEY_H + (tall - 1) * PITCH_Y}"/></element>')
@@ -232,7 +240,7 @@ def key_table():
     # IPT_OTHER, because MAME locks out every keyboard but one and generic_keyboard is the one kept
     lines = ['// Generated by artwork/make_layout.py', '', '#ifndef MAME_CHYRON_MAXINE_KEYS_H',
              '#define MAME_CHYRON_MAXINE_KEYS_H', '', '#pragma once', '',
-             '// MAXINE key code for each bit of PANEL0 to PANEL2. $100 up are the shift keys, the mouse/tablet switch, then the export buttons.',
+             '// MAXINE key code for each bit of PANEL0 to PANEL2. $100 up are the shift keys, the mouse/tablet switch, the export buttons, then the second screen key.',
              'static constexpr uint16_t PANEL_KEYS[] = {']
     for lines_, code, host, place in KEYS:
         lines.append(f'\t0x{code:03x}, // {" ".join(lines_)}')

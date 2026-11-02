@@ -1,7 +1,7 @@
 import ui from './ui.module.css'
 import styles from './TopBar.module.css'
 
-export type Tab = 'convert' | 'upload'
+export type Tab = 'convert' | 'upload' | 'emulator'
 
 interface Props {
   tab: Tab
@@ -23,6 +23,11 @@ export default function TopBar({ tab, onTab, status, fontCount }: Props): JSX.El
             Upload
             {fontCount > 0 && <span className={`${ui.mono} ${styles.count}`}>{fontCount}</span>}
           </button>
+          {window.maxine.platform !== 'win32' && (
+            <button className={tab === 'emulator' ? styles.tabActive : styles.tab} onClick={() => onTab('emulator')}>
+              Emulator
+            </button>
+          )}
         </nav>
       </div>
       <div className={styles.title}>

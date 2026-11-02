@@ -7,7 +7,7 @@ set -eu
 
 if [ "$(uname -s)" = Linux ]; then
     # MAME opens the TAP named after the user running it, and that user has to own it
-    OWNER=${SUDO_UID:-$(id -u)}
+    OWNER=${SUDO_UID:-${PKEXEC_UID:-$(id -u)}}
     TAP=tap-mess-$OWNER-0
     ip link show "$TAP" >/dev/null 2>&1 || ip tuntap add dev "$TAP" mode tap user "$OWNER"
     ip addr replace 10.37.0.1/24 dev "$TAP"

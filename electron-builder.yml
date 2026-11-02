@@ -32,6 +32,8 @@ mac:
   extraResources:
     - from: resources/python/darwin-${arch}/python
       to: python
+    - from: resources/emulator/darwin-${arch}
+      to: emulator
   target:
     - target: dmg
       arch:
@@ -47,6 +49,8 @@ linux:
   extraResources:
     - from: resources/python/linux-x64/python
       to: python
+    - from: resources/emulator/linux-x64
+      to: emulator
     - from: resources/icon.png
       to: icon.png
   target:

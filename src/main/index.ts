@@ -2,6 +2,7 @@ import { app, BrowserWindow, screen } from 'electron'
 import { readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { registerIpc } from './ipc'
+import { Emulator, registerEmulator } from './emulator'
 import type { Bridge } from './bridge'
 
 interface WindowState {
@@ -48,6 +49,8 @@ function saveWindowState(win: BrowserWindow): void {
 }
 
 let bridge: Bridge | null = null
+let emulator: Emulator | null = null
+let stoppingEmulator = false
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -76,6 +79,7 @@ function createWindow(): void {
   win.webContents.on('will-navigate', (event) => event.preventDefault())
 
   bridge = registerIpc(win)
+  emulator = registerEmulator(win)
 
   if (!app.isPackaged && process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'])
@@ -91,4 +95,13 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => app.quit())
+
+// The emulator saves its NVRAM as it exits, so quitting waits for that
+app.on('before-quit', (event) => {
+  if (!emulator?.running) return
+  event.preventDefault()
+  if (stoppingEmulator) return
+  stoppingEmulator = true
+  emulator.stop().finally(() => app.quit())
+})
 app.on('will-quit', () => bridge?.stop())

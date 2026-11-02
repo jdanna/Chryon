@@ -28,6 +28,17 @@ when it's on the unit.
 
 ![Managing fonts on the Upload tab, connected to a local test server](docs/upload.png)
 
+## Run the emulator
+
+On Mac and Linux, the Emulator tab runs the real MAXINE! software, built into the app. Press Run and it opens in
+its own window. Start the network first to reach it over FTP at 10.37.0.2.
+
+![The Emulator tab](docs/emulator-tab.png)
+
+![The emulator running Message Compose](docs/emulator.png)
+
+Keys and details are in [emulator/README.md](emulator/README.md).
+
 ## Get the app
 
 [Download the latest release](https://github.com/jdanna/MaxineStudio/releases/latest) for Mac,
@@ -39,8 +50,11 @@ installer lands in `dist/`.
 
 ```sh
 npm install
+npm run predist:mac   # or predist:win, predist:linux
 npm run dist:mac      # or dist:win, dist:linux
 ```
+
+`predist` fetches Python and builds the emulator, which uses Docker for Linux.
 
 ## More
 

@@ -25,6 +25,26 @@ const api: MaxineApi = {
     const handler = (_: unknown, p: UploadProgress): void => listener(p)
     ipcRenderer.on('ftp:progress', handler)
     return () => ipcRenderer.off('ftp:progress', handler)
+  },
+  emulatorStatus: (cfg) => ipcRenderer.invoke('emulator:status', cfg),
+  emulatorStart: (cfg) => ipcRenderer.invoke('emulator:start', cfg),
+  emulatorStop: () => ipcRenderer.invoke('emulator:stop'),
+  emulatorNetwork: (up) => ipcRenderer.invoke('emulator:network', up),
+  pickEmulatorImage: () => ipcRenderer.invoke('emulator:pick-image'),
+  pickEmulatorFolder: () => ipcRenderer.invoke('emulator:pick-folder'),
+  openEmulatorFolder: (cfg) => ipcRenderer.invoke('emulator:open-folder', cfg),
+  resetEmulatorDisk: (cfg) => ipcRenderer.invoke('emulator:reset', cfg),
+  readNvram: (cfg) => ipcRenderer.invoke('emulator:nvram-read', cfg),
+  writeNvram: (cfg, data) => ipcRenderer.invoke('emulator:nvram-write', cfg, data),
+  onEmulatorLog: (listener) => {
+    const handler = (_: unknown, lines: string[]): void => listener(lines)
+    ipcRenderer.on('emulator:log', handler)
+    return () => ipcRenderer.off('emulator:log', handler)
+  },
+  onEmulatorState: (listener) => {
+    const handler = (_: unknown, running: boolean): void => listener(running)
+    ipcRenderer.on('emulator:state', handler)
+    return () => ipcRenderer.off('emulator:state', handler)
   }
 }
 

@@ -83,7 +83,7 @@ Module `Telnet ver 11.00`, image offset `0x11efc08`. Present in 10.10 as well (`
 ### `TELNETD.CFG` (firmware)
 
 Read at `TELD` start from `<drive>/SYSTEM/ETC/TELNETD.CFG`, or `<drive>/<dir>/ETC/TELNETD.CFG`.
-It isn't in the disk image or on the unit, so the syntax comes from the parser. An `[allow]` rule has been
+It isn't on the real unit or the archive disk image, so the syntax comes from the parser. An `[allow]` rule has been
 tried on the emulator, see the plan below. It's plain text with `[section]` headers, `key=value` lines, and `#` comments.
 Section and key names ignore case.
 
@@ -131,6 +131,8 @@ Tested on the emulator on 2026-11-02:
   set up" rather than a network failure.
 - FTP can install the file. `CWD /SYSTEM/ETC` then `STOR TELNETD.CFG` worked with Unix line endings, in active
   mode like every other transfer. The server reads it at boot, so the unit has to reboot afterwards.
+- `roms/maxine-default.chd`, the emulator's default disk, has had this file since 2026-11-02. The clean
+  `maxine-v11.01.chd` doesn't, and neither does a saved `disk.chd` made before then.
 - With this file and `host=10.37.0.1`, the server accepted the connection and sent `ff fd 18`, telnet's `IAC DO
   TERMINAL-TYPE`. So it does negotiate, and the open question under Login is answered:
 

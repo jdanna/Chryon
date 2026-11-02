@@ -274,8 +274,12 @@ what it enables, and CNTL then X writes that to the drive. Typing X without CNTL
 Writing moves the enabled programs from `/SYSTEM/UNPURCH` to `/SYSTEM/PROGRAMS`, so Startup loads them at
 the next boot.
 
-Network settings are in NVRAM, from Setup's Network screen: the low three Ethernet address bytes at `$779`,
-then the Internet address at `$77c`, subnet mask at `$780` and default gateway at `$784`. Fields append to their
+Network settings live in `/SYSTEM/ETC/NET_CONF` on the disk, which Setup's Network screen writes with Save Values.
+The network stack reads NVRAM early in boot: the low three Ethernet address bytes at `$779`, then the Internet
+address at `$77c`, subnet mask at `$780` and default gateway at `$784`. About 10 seconds in, the Loader's `set_network`
+code copies the file over `$76c`, `$774`, `$77c`–`$78f`, creating the file if there isn't one, which is why it
+says to reboot after a change. So an address written straight to NVRAM works for one boot, confirmed 2026-11-02 by
+booting at 10.37.0.9 and then falling back to 10.37.0.2, and `$779` isn't touched. Fields append to their
 text, so clear them with Backspace, and move between them with the arrow keys. The LAN driver reads its full
 address from `$1f2c`, where the boot PROM would have put it, so the driver builds that at reset as `08:00:3e`
 plus the bytes at `$779`. It also seeds 10.37.0.2/24 with gateway 10.37.0.1 while `$77c` is zero.

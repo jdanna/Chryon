@@ -225,6 +225,7 @@ startup, so a name that differs from `productName` crashes the packaged app with
 npm run dev            # needs python3 with Pillow, numpy, fontTools
 npm run typecheck
 npm run test:headless  # build, then run scripts/headless/smoke.json with no window
+npm run predist:mac | predist:win | predist:linux     # Python, and the emulator except on Windows
 npm run dist:mac | dist:win | dist:linux | release     # unsigned installers
 ```
 
@@ -288,6 +289,26 @@ npm run dist:mac | dist:win | dist:linux | release     # unsigned installers
   limits. Which setting matters isn't known, because they all changed together, so
   change one at a time if lowering them. Reads have never hung it: 8 `LIST`/`NLST` in
   one quick run were fine.
+- The Emulator tab (`src/main/emulator.ts`, `EmulatorTab.tsx`, `NvramPanel.tsx`) is hidden on Windows. Confirmed on
+  2026-11-02 in a Linux AppImage, except the real password prompt. Nothing Mac-specific has been run yet: the tab, the
+  `osascript` prompt, or `bundleDylibs` in the vendor script. The tab's two
+  paths are a read-only `.chd`, empty for the built-in default, and a folder holding `disk.chd`, `nvram/`, `cfg/` and
+  `snap/`, empty for `<userData>/emulator`. Only `disk.chd` is ever deleted, by Reset. Tests set
+  `MAXINE_EMULATOR_ARGS`, which is appended to MAME's arguments, plus `SDL_VIDEODRIVER=dummy`.
+- Stop sends SIGTERM, which `maxine.cpp` turns into a clean exit. SDL catches that signal and posts an event MAME
+  ignores, so without the driver's handler a kill never saves NVRAM. Quitting the app waits for that exit.
+- The log field reads stdout. `MAXINE_LOG_STDOUT` makes the driver send `logerror` there, so no `error.log` grows.
+- `net-up.sh` and `net-down.sh` run as root by passing their text to `pkexec /bin/sh -c`, or through `osascript` on a
+  Mac, because root can't read inside an AppImage's FUSE mount. Check a change to them from a packaged app.
+- `shared/nvram.ts` lists the only NVRAM fields the editor shows, as the user chose on 2026-11-02: both serial records,
+  Tel No Login, Ethernet and Debug mode. The rest stay at their defaults. Leave out anything the firmware overwrites at
+  boot: `$76c`, `$774` and `$77c`–`$78f` come from `NET_CONF` on the disk.
+- Packaging: `scripts/vendor-emulator.mjs` fills gitignored `resources/emulator/<platform>-<arch>/`, which
+  electron-builder copies to `resources/emulator`. Linux builds in Docker on Ubuntu 22.04 in `emulator/mame-linux-x64`,
+  so the binary needs glibc 2.35 or newer, and `collect-libs.sh` bundles SDL and the like, but not glibc, the GL stack
+  or what Electron needs anyway. `MAXINE_NATIVE_BUILD=1` builds on the host instead. `release` on a Mac needs Docker.
+- Headless screenshots time out on Linux once the hidden window has updated. Use `xvfb-run -a node
+  scripts/headless/driver.mjs steps.json --show`, but that real window doesn't auto-answer dialogs.
 - Remote control isn't built. "Plan for MAXINE! Studio remote control" in `docs/remote-control-research.md` has the
   telnet setup it needs, including the `TELNETD.CFG` allow rule, tested on the emulator.
 - Every command, reply and 64 KB of progress is appended, with timestamps, to
@@ -352,6 +373,9 @@ python3 tools/phile.py ls emulator/roms/maxine-v11.01.img /SYSTEM/PROGRAMS
   Confirmed 2026-11-02 from the Mac at 10.37.0.1: ping, FTP in active mode, a 251 KB font read back byte-identical,
   STOR and DELE. The 82596's blocks can sit on 2-byte boundaries, so the patch makes its dword access unaligned.
   Scripted runs can now reach the host: cap their log with `ulimit -f`, because a stuck chip wrote 11 GB in minutes.
+- `roms/maxine-default.chd` gained `/SYSTEM/ETC/TELNETD.CFG` on 2026-11-02, written through the firmware's own FTP
+  server so the filesystem stayed valid: five sectors changed. Do the same for any later change to it, because
+  `tools/phile.py` is read-only. `maxine-v11.01.chd` stays clean.
 - There's no boot PROM dump. `boot_stub()` in `maxine.cpp` loads `PSOS` at `$3000` and starts it
   through the reset vectors, which is meant to stay as a supported path.
 - Driver-local devices go in `emulator/src/mame/chyron/`, and `build.sh` picks up new `.cpp` files.
@@ -361,6 +385,10 @@ python3 tools/phile.py ls emulator/roms/maxine-v11.01.img /SYSTEM/PROGRAMS
   image, and `emulator/roms/maxine-default.chd`, a snapshot of their disk with options enabled, which is what
   `run.sh` starts from. Both are read-only, so never modify them by accident. PROM dumps must never be
   committed, and a real unit's site ID stays out of the repo.
+- The host's SHIFT ROW, CHAR and PAGE keys are `HOSTHOLD` in `maxine.cpp`, held only, and win over a panel key's latch.
+  To test host keys for real, run with a real window under `xvfb-run` and send `xdotool keydown`, a 120 ms wait and
+  `keyup`: `xdotool key` is too short for MAME's input poll. `key_w` is the place to watch, because the firmware doesn't
+  read keys from the DUART address a Lua tap can see. The firmware's key names have no centre-character key.
 - `tests/script.py` builds input scripts and `tests/drive.lua` plays them. Run them with `-window -video
   none -mouseprovider none -keyboardprovider none`. Any real window takes pointer events from the user's
   mouse despite the providers, which corrupts the test, and leaving out `-window` goes fullscreen.
@@ -369,9 +397,11 @@ python3 tools/phile.py ls emulator/roms/maxine-v11.01.img /SYSTEM/PROGRAMS
   `cpu.debug:bpset(addr, cond, 'logerror "...",d0; g')` logs to `error.log` (`-log`), and a breakpoint
   on `$ffe00024`, the `TRAP #11` entry, traces every pSOS+ call. `LOG_REGS`, `LOG_SCSI` and
   `LOG_HEARTBEAT` in `maxine.cpp` are off by default; turn them on with `VERBOSE`.
-- Scripted tablet tests need NVRAM seeded first (`$262` = 1, `$411` = 1, `$218` = `4b 00 82 01`), because a blank one
-  leaves the port unset. A configured port also has no boot warning, so drop `script.py`'s opening `540 key 20`, or
-  it launches Message Compose. Run them one at a time: two side by side dropped Logo Compose into menu mode once.
+- A new NVRAM comes from `ROM_START` in `maxine.cpp`: the SCSI disk entry, both serial records, `$262` and tablet type
+  `$411` = 1, using the values Setup wrote on this unit. `nvramDefaults()` in `shared/nvram.ts` has to match. An
+  existing NVRAM file is left alone, and it's the only place these live, not the disk. The Loader's serial warning
+  tests only `$262`, so scripted runs have no warning to dismiss. Run them one at a time: two side by side dropped
+  Logo Compose into menu mode once.
 - pSOS+ fatal errors land in pROBE+, which then loops reading the console for `S`, so a stack in
   `$ffe1c7ea` means something failed earlier.
 

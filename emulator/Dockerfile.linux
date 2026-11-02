@@ -1,0 +1,7 @@
+# Builds the Linux emulator that goes in the AppImage. A binary runs on its own glibc or a newer one, so
+# this stays on an old release, the oldest with a new enough compiler. MAME needs GCC 11.
+FROM ubuntu:22.04
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential ca-certificates git python3 \
+    libfontconfig-dev libgl-dev libpcap-dev libsdl2-dev libsdl2-ttf-dev \
+    libx11-dev libxext-dev libxi-dev libxinerama-dev

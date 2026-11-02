@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Builds scripts for drive.lua. Starts after the Loader's serial warning is dismissed, with the
-mouse at its start position:
+Builds scripts for drive.lua. Starts at the Loader, with the mouse at its start position:
 
     s = Script()
     s.click(268, 198); s.wait(1250)       # Message Compose
@@ -34,4 +33,4 @@ class Script:
         s.n+=w; s.at('snap'); s.n+=4
     def write(s,f):
         s.at('quit')
-        open(f,'w').write('540 key 20\n'+'\n'.join(s.L)+'\n')
+        open(f,'w').write('\n'.join(s.L)+'\n')

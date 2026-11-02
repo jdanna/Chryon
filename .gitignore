@@ -3,6 +3,7 @@ node_modules/
 dist/
 out/
 resources/python/
+resources/emulator/
 .vendor-tmp-*/
 *.tsbuildinfo
 
@@ -47,6 +48,7 @@ experiments/uploaded-fonts/
 # Emulator: MAME checkout, working copies, and firmware. The 11.01 disk images are preserved here on
 # purpose; PROM dumps must never reach this public repo.
 emulator/mame/
+emulator/mame-*/
 emulator/roms/*
 emulator/run/
 *.chd

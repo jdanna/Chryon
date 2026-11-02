@@ -38,6 +38,11 @@
 #include "speaker.h"
 
 #include "modules/lib/osdlib.h"
+
+#include <bit>
+#include <csignal>
+#include <cstdio>
+#include <cstdlib>
 #include "osdepend.h"
 
 #include <filesystem>
@@ -64,6 +69,13 @@
 #include "logmacro.h"
 
 namespace {
+
+static volatile std::sig_atomic_t s_quit_requested = 0;
+
+static void request_quit(int)
+{
+	s_quit_requested = 1;
+}
 
 // Read from a PAL on the real board. Licensed files on the archive's disk image carry this one.
 static constexpr uint16_t SITE_ID = 0x2192;
@@ -205,6 +217,7 @@ public:
 		, m_panel(*this, "PANEL%u", 0U)
 		, m_host_keys(*this, "HOSTKEYS")
 		, m_host_shift(*this, "HOSTSHIFT")
+		, m_host_hold(*this, "HOSTHOLD")
 		, m_export(*this, "EXPORT")
 		, m_shift_lamps(*this, "shift%u", 0U)
 		, m_serial_duart(*this, "serial_duart")
@@ -246,6 +259,7 @@ private:
 	void pointer_w(uint32_t data);
 	void update_cursor_position();
 	void update_mouse();
+	int active_shift() const;
 	void panel_key(uint16_t code);
 	void export_outputs(std::string const &folder = std::string());
 	void write_snapshot(std::string const &filename, bitmap_rgb32 const &bitmap);
@@ -298,6 +312,7 @@ private:
 	required_ioport_array<3> m_panel;
 	required_ioport m_host_keys;
 	required_ioport m_host_shift;
+	required_ioport m_host_hold;
 	required_ioport m_export;
 	output_finder<4> m_shift_lamps;
 	required_device<mc68681_device> m_serial_duart;
@@ -346,6 +361,7 @@ private:
 	bool m_export_held = false;
 	uint32_t m_panel_last[3]{};
 	int m_shift = -1;
+	int m_held_shift = -1;
 	int m_key_bit = -1;
 	int m_irq_level = 0;
 	bool m_bim_input[4]{};
@@ -543,6 +559,9 @@ uint32_t maxine_state::edit_update(screen_device &screen, bitmap_rgb32 &bitmap, 
 // while, and fewer than 58 a second means 625 lines. Video board timing isn't modelled.
 TIMER_CALLBACK_MEMBER(maxine_state::field_tick)
 {
+	if (s_quit_requested)
+		machine().schedule_exit();
+
 	bim_input_w<2>(ASSERT_LINE);
 
 #if defined(__APPLE__)
@@ -565,6 +584,9 @@ TIMER_CALLBACK_MEMBER(maxine_state::field_tick)
 		export_outputs();
 	m_export_held = export_pressed;
 
+	uint32_t const held = m_host_hold->read();
+	m_held_shift = held ? std::countr_zero(held) : -1;
+
 	for (int port = 0; port < 3; port++)
 	{
 		uint32_t const keys = m_panel[port]->read();
@@ -573,6 +595,11 @@ TIMER_CALLBACK_MEMBER(maxine_state::field_tick)
 				panel_key(PANEL_KEYS[port * 32 + i]);
 		m_panel_last[port] = keys;
 	}
+
+	int const shift = active_shift();
+	for (int i = 0; i < 3; i++)
+		m_shift_lamps[i] = (shift == i) ? 1 : 0;
+	m_shift_lamps[3] = m_tablet_mode ? 1 : 0;
 
 	bool const paste_pressed = m_host_keys->read() == 3; // Command and V
 	if (paste_pressed && !m_paste_held)
@@ -680,8 +707,9 @@ void maxine_state::host_key(uint8_t data)
 	{
 	case 0x0d: data = 0xce; break; // Return is NEW LINE
 	case 0x1b: data = 0xfe; break; // Esc
+	case 0x09: data = m_host_shift->read() ? 0xe6 : 0xe5; break; // Tab
 	case 0x08: data = 0x5e; break; // Backspace
-	case 0x0a: case 0x7f: return; // Insert and Delete, which the panel ports handle
+	case 0x0a: case 0x7f: return; // Insert and Delete, which the input ports handle
 	}
 	key_w(data);
 }
@@ -710,9 +738,15 @@ void maxine_state::paste_text(std::string const &text)
 	}
 }
 
-// The shift keys are held on the real keyboard and change what a cursor key sends. Here a click
-// latches one until a second click clears it or another takes over. The host's Shift then gives
-// the S-SHIFT codes, which move further.
+// The shift keys are held on the real keyboard and change what a cursor key sends. On the panel a
+// click latches one until a second click clears it or another takes over. The host's keys for them
+// are held, as on the real one, and win over a latched key. The host's Shift then gives the S-SHIFT
+// codes, which move further.
+int maxine_state::active_shift() const
+{
+	return (m_held_shift >= 0) ? m_held_shift : m_shift;
+}
+
 void maxine_state::panel_key(uint16_t code)
 {
 	static constexpr uint8_t SHIFT_BASE[] = { 0x88, 0x84, 0x80 }; // CHAR, PAGE, ROW
@@ -728,16 +762,12 @@ void maxine_state::panel_key(uint16_t code)
 		int const shift = code - 0x100;
 		m_shift = (m_shift == shift) ? -1 : shift;
 	}
-	else if (code >= 0x8c && code <= 0x8f && m_shift >= 0)
+	else if (code >= 0x8c && code <= 0x8f && active_shift() >= 0)
 	{
-		key_w(SHIFT_BASE[m_shift] + (m_host_shift->read() ? 0x10 : 0) + (code - 0x8c));
+		key_w(SHIFT_BASE[active_shift()] + (m_host_shift->read() ? 0x10 : 0) + (code - 0x8c));
 	}
 	else
 		key_w(code);
-
-	for (int i = 0; i < 3; i++)
-		m_shift_lamps[i] = (m_shift == i) ? 1 : 0;
-	m_shift_lamps[3] = m_tablet_mode ? 1 : 0;
 }
 
 // From the layout script: x << 16 | buttons << 12 | y in Prompts pixels, with bit 30 set and raster
@@ -1258,6 +1288,18 @@ void maxine_state::boot_stub()
 
 void maxine_state::machine_start()
 {
+	// SDL turns these into an event that MAME never reads, so a plain kill wouldn't stop the machine.
+	// Exiting through the scheduler is what saves the NVRAM.
+	std::signal(SIGTERM, request_quit);
+	std::signal(SIGINT, request_quit);
+
+	// For MAXINE! Studio's log field. error.log has no limit, and a stuck chip once wrote 11 GB of it.
+	if (std::getenv("MAXINE_LOG_STDOUT"))
+	{
+		std::signal(SIGPIPE, SIG_IGN); // losing the app shouldn't lose the machine
+		machine().add_logerror_callback([] (char const *text) { std::fputs(text, stdout); std::fflush(stdout); });
+	}
+
 	m_key_timer = timer_alloc(FUNC(maxine_state::key_bit), this);
 	m_mouse_timer = timer_alloc(FUNC(maxine_state::mouse_bit), this);
 	m_tablet_timer = timer_alloc(FUNC(maxine_state::tablet_bit), this);
@@ -1294,6 +1336,12 @@ static INPUT_PORTS_START(maxine)
 
 	PORT_START("HOSTSHIFT")
 	PORT_BIT(1, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("S-SHIFT") PORT_CODE(KEYCODE_LSHIFT) PORT_CODE(KEYCODE_RSHIFT)
+
+	// Bits match the panel's shift order: CHAR, PAGE, ROW
+	PORT_START("HOSTHOLD")
+	PORT_BIT(1, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("Hold SHIFT CHAR") PORT_CODE(KEYCODE_HOME)
+	PORT_BIT(2, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("Hold SHIFT PAGE") PORT_CODE(KEYCODE_PGUP)
+	PORT_BIT(4, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("Hold SHIFT ROW") PORT_CODE(KEYCODE_INSERT)
 
 	PORT_START("EXPORT")
 	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("Export Video and Key") PORT_CODE(KEYCODE_RCONTROL)
@@ -1381,6 +1429,17 @@ ROM_START(maxine)
 	ROM_FILL(0x000a, 1, 9)
 	ROM_FILL(0x000c, 1, 0x20) // 0x00200000 blocks
 	ROM_FILL(0x0011, 1, 1)
+	// Serial ports as Setup stores them, baud word, data bits and parity, stop code, so a new machine
+	// has no "Serial Ports not initialized" warning: the tablet port at 19200 8O1, then 9600 8N1 for II
+	ROM_FILL(0x0218, 1, 0x4b)
+	ROM_FILL(0x021a, 1, 0x81)
+	ROM_FILL(0x021b, 1, 0x11)
+	ROM_FILL(0x021c, 1, 0x25)
+	ROM_FILL(0x021d, 1, 0x80)
+	ROM_FILL(0x021e, 1, 0x82)
+	ROM_FILL(0x021f, 1, 0x03)
+	ROM_FILL(0x0262, 1, 1) // serial ports set up, which is all the Loader's warning checks
+	ROM_FILL(0x0411, 1, 1) // tablet type: WACOM SD510C, the one the driver emulates
 ROM_END
 
 } // anonymous namespace

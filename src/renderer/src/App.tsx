@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FontInfo, FontSource, Settings } from '@shared/types'
 import ConvertTab from './components/ConvertTab'
+import EmulatorTab from './components/EmulatorTab'
 import LogPanel, { LogEntry, LogKind } from './components/LogPanel'
 import TopBar, { Tab } from './components/TopBar'
 import UploadTab from './components/UploadTab'
@@ -123,6 +124,11 @@ export default function App(): JSX.Element {
             setStatus={setStatus}
           />
         </div>
+        {api.platform !== 'win32' && (
+          <div className={styles.tabView} hidden={tab !== 'emulator'}>
+            <EmulatorTab settings={settings.emulator} onSettings={(emulator) => setSettings({ ...settings, emulator })} log={addLog} setStatus={setStatus} />
+          </div>
+        )}
       </div>
       <LogPanel entries={log} onClear={() => setLog([])} />
       {dragging && (

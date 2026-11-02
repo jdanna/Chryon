@@ -15,6 +15,10 @@ right, and a clickable panel of MAXINE! keys is below them.
 
 ## Instructions
 
+The Emulator tab in MAXINE! Studio is the easy way to run it, on a Mac or Linux. Everything below is for running
+it from a checkout. In the app, the saved image, NVRAM and exports are in the folder shown under Saved image
+location, and Start network asks for your password instead of using `sudo`. On Linux, that needs polkit.
+
 On a Mac, it needs Xcode command line tools, Python 3 and SDL2 (`brew install sdl2`). On Ubuntu, it needs
 `sudo apt install libsdl2-dev libsdl2-ttf-dev libasound2-dev libpcap-dev`. The first build takes a long time.
 
@@ -33,24 +37,25 @@ your work is kept. Delete that file to start over. The default has software opti
 |---|---|
 | Return | NEW LINE |
 | Backspace | BACKSPACE |
+| Tab | TAB |
 | Left Ctrl | CNTL |
 | Left Alt | ALT |
 | Esc | ESC |
 | Arrows | CURSOR |
-| Home | HOME |
-| Page Up, Numpad Enter | READ |
+| Hold Insert, Home, Page Up | SHIFT ROW, CHAR, PAGE |
+| Page Down | XFER |
+| Numpad − | READ NEXT |
+| Numpad Enter | READ |
 | Numpad + | RCD |
-| Numpad − | DEL MSG |
-| Page Down | CHNG |
-| End | READ NEXT |
-| Insert | XFER |
+| Numpad * | DEL MSG |
+| Numpad . | CLR |
 | F1–F10 | F1–F10 |
 | F11, F12 | CRAWL, ROLL |
 | Numeric keypad | KEYPAD |
 | Fn+Delete | ERASE, which clears the whole message |
 
-Everything else is on the panel. Its SHIFT keys stay latched until clicked again and apply to the arrow
-keys, and holding the host's Shift moves further. MODE SLCT opens the menu that exits to the Loader.
+Everything else is on the panel. Its SHIFT keys stay latched until clicked again and apply to the arrow keys.
+Holding the host's Shift as well moves further. MODE SLCT opens the menu that exits to the Loader.
 
 Command-V pastes the clipboard as plain ASCII.
 
@@ -61,9 +66,10 @@ there. It re-syncs when the pointer re-enters Prompts or the app regains focus.
 
 ### Tablet
 
-Choose WACOM SD510C under Tablet Type in the Loader's Setup, then click MOUSE on the panel to switch to
-TABLET. It only works in Logo Compose. Left and right click are buttons 1 and 2. Button 2 flips between the
-crosshair on Color Edit and the arrow on Prompts, so keep your pointer over the screen in use.
+A new machine is set up for the WACOM SD510C. If you've changed it, choose it again under Tablet Type in the
+Loader's Setup. Click MOUSE on the panel to switch to TABLET. It only works in Logo Compose. Left and right click
+are buttons 1 and 2. Button 2 flips between the crosshair on Color Edit and the arrow on Prompts, so keep your
+pointer over the screen in use.
 
 To draw an outline over Color Edit, press O, Return, Right arrow, Return, then P at each point and O to
 close it. Press `?` in Logo Compose for the other keys.
@@ -76,9 +82,9 @@ Run this once after each reboot, on a Mac or Linux. It needs your password.
 sudo emulator/net-up.sh
 ```
 
-It creates a virtual Ethernet link and gives your computer 10.37.0.1. Start the emulator and the MAXINE is at
+It creates a virtual Ethernet link and gives your computer 10.37.0.1. `sudo emulator/net-down.sh` removes it. Start the emulator and the MAXINE is at
 10.37.0.2. Its disk needs the Networking option, which the default disk has. Change the MAXINE's address in
-the Loader's Setup, under Network.
+the Loader's Setup, under Network, then Save Values. The address is kept in `/SYSTEM/ETC/NET_CONF` on the disk.
 
 On Linux, the link is a TAP device called `tap-mess-<your user ID>-0`, so run the emulator as the user who ran
 the script, not as root.
@@ -93,8 +99,10 @@ listing a folder hangs, that's the likely cause. With ufw on Linux:
 sudo ufw allow in on tap-mess-$(id -u)-0
 ```
 
-Telnet closes the connection until `/SYSTEM/ETC/TELNETD.CFG` allows your computer, which takes effect on the
-next reboot of the emulator. Upload it over FTP. See `docs/remote-control-research.md` for the format.
+The default disk has a `/SYSTEM/ETC/TELNETD.CFG` that allows telnet from 10.37.0.1, as user and password `chyron`.
+Telnet starts a few seconds after FTP. A disk that doesn't have that file closes the connection straight away, so
+that's what `maxine-v11.01.chd` does, and so does a saved disk copied before the file was added. To add it, upload
+it over FTP and reboot the emulator. See `docs/remote-control-research.md` for the format.
 
 ### Export
 

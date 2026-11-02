@@ -81,9 +81,35 @@ export interface FtpConfig {
   gap: number
 }
 
+/** Empty strings mean the built-in image and the folder in the app's own data. */
+export interface EmulatorConfig {
+  /** The read-only .chd that a new saved image is copied from. */
+  image: string
+  /** Holds disk.chd, nvram/, cfg/ and snap/ for this machine. */
+  folder: string
+}
+
+export interface EmulatorStatus {
+  /** Why it can't run on this computer, or null if it can. */
+  missing: string | null
+  running: boolean
+  network: boolean
+  image: string
+  imageFound: boolean
+  folder: string
+  /** Bytes, or null until the first run makes the saved image. */
+  diskSize: number | null
+}
+
+export interface NvramFile {
+  exists: boolean
+  data: Uint8Array | null
+}
+
 export interface Settings {
   convert: ConvertSettings
   ftp: FtpConfig
+  emulator: EmulatorConfig
 }
 
 export interface RemoteEntry {
@@ -146,4 +172,18 @@ export interface MaxineApi {
   loadSettings(): Promise<Settings>
   saveSettings(settings: Settings): Promise<void>
   onUploadProgress(listener: (p: UploadProgress) => void): () => void
+  emulatorStatus(cfg: EmulatorConfig): Promise<EmulatorStatus>
+  emulatorStart(cfg: EmulatorConfig): Promise<void>
+  emulatorStop(): Promise<void>
+  /** Asks for the admin password. Resolves to whether the link is up afterwards. */
+  emulatorNetwork(up: boolean): Promise<boolean>
+  pickEmulatorImage(): Promise<string | null>
+  pickEmulatorFolder(): Promise<string | null>
+  openEmulatorFolder(cfg: EmulatorConfig): Promise<void>
+  /** Asks for confirmation in a native dialog. Resolves to false if declined. */
+  resetEmulatorDisk(cfg: EmulatorConfig): Promise<boolean>
+  readNvram(cfg: EmulatorConfig): Promise<NvramFile>
+  writeNvram(cfg: EmulatorConfig, data: Uint8Array): Promise<void>
+  onEmulatorLog(listener: (lines: string[]) => void): () => void
+  onEmulatorState(listener: (running: boolean) => void): () => void
 }

@@ -31,6 +31,7 @@
 #include "machine/nscsi_bus.h"
 #include "machine/timekpr.h"
 #include "machine/z80scc.h"
+#include "corestr.h"
 #include "emuopts.h"
 #include "fileio.h"
 #include "png.h"
@@ -83,6 +84,11 @@ static void request_quit(int)
 }
 
 #if defined(_WIN32)
+
+// Windows only lets the active program hand over the foreground. Declared here because windows.h
+// brings in macros that clash with MAME's names.
+extern "C" __declspec(dllimport) int __stdcall AllowSetForegroundWindow(unsigned long process);
+static constexpr unsigned long ASFW_ANY = 0xffffffff;
 
 // Node can only terminate a process on Windows, which loses the NVRAM, so MAXINE! Studio closes
 // stdin instead. The low-level read matters: getchar() would hold a stream lock that exit() needs.
@@ -288,8 +294,8 @@ private:
 	void update_mouse();
 	int active_shift() const;
 	void panel_key(uint16_t code);
-	void export_outputs(bool square, std::string const &folder = std::string());
-	void write_snapshot(std::string const &filename, bitmap_rgb32 const &bitmap);
+	void export_outputs(bool square, std::string const &folder = std::string(), bool ask = false);
+	bool write_snapshot(std::string filename, bitmap_rgb32 const &bitmap);
 	void write_file(std::string const &path, bitmap_rgb32 const &bitmap);
 
 	void update_irq(int state);
@@ -689,8 +695,9 @@ static void crop_centre(bitmap_rgb32 const &src, bitmap_rgb32 &dest)
 }
 
 // Saves the clean Video and Key outputs as a matching pair: to the snapshot folder without a folder given,
-// and either at 720x486 or as 640x480 square pixels, which is 648x486 less 4 columns and 3 lines each side
-void maxine_state::export_outputs(bool square, std::string const &folder)
+// and either at 720x486 or as 640x480 square pixels, which is 648x486 less 4 columns and 3 lines each side.
+// With ask, MAXINE! Studio then moves the pair to a folder it asks for, which works the same on every system.
+void maxine_state::export_outputs(bool square, std::string const &folder, bool ask)
 {
 	bitmap_rgb32 video(720, 486), key(720, 486);
 	m_fb->render_video(video, video.cliprect());
@@ -702,9 +709,17 @@ void maxine_state::export_outputs(bool square, std::string const &folder)
 		if (folder.empty())
 		{
 			std::string const number = util::string_format("%04u", m_export_count++);
-			write_snapshot("maxine/video-" + number + suffix, video_out);
-			write_snapshot("maxine/key-" + number + suffix, key_out);
-			logerror("Saved video-%s%s and key-%s%s in snap/maxine\n", number, suffix, number, suffix);
+			if (!write_snapshot("maxine/video-" + number + suffix, video_out) || !write_snapshot("maxine/key-" + number + suffix, key_out))
+				return;
+			if (ask)
+			{
+#if defined(_WIN32)
+				AllowSetForegroundWindow(ASFW_ANY); // or the dialog can open behind this window
+#endif
+				logerror("MAXINE_EXPORT %s%s\n", number, suffix);
+			}
+			else
+				logerror("Saved video-%s%s and key-%s%s in snap/maxine\n", number, suffix, number, suffix);
 			return;
 		}
 
@@ -734,16 +749,18 @@ void maxine_state::export_outputs(bool square, std::string const &folder)
 	save(video_cropped, key_cropped);
 }
 
-void maxine_state::write_snapshot(std::string const &filename, bitmap_rgb32 const &bitmap)
+bool maxine_state::write_snapshot(std::string filename, bitmap_rgb32 const &bitmap)
 {
+	strreplace(filename, "/", PATH_SEPARATOR); // on Windows, MAME only makes the folder from its own separator
 	emu_file file(machine().options().snapshot_directory(), OPEN_FLAG_WRITE | OPEN_FLAG_CREATE | OPEN_FLAG_CREATE_PATHS);
 	if (file.open(filename))
 	{
 		logerror("cannot write %s\n", filename);
-		return;
+		return false;
 	}
 	util::png_info info;
 	util::png_write_bitmap(file, &info, bitmap, 0, nullptr);
+	return true;
 }
 
 void maxine_state::write_file(std::string const &path, bitmap_rgb32 const &bitmap)
@@ -817,11 +834,7 @@ void maxine_state::panel_key(uint16_t code)
 
 	if (code == 0x104 || code == 0x105) // the export buttons
 	{
-#if defined(__APPLE__)
-		s_export_requested = code == 0x105 ? export_request::SQUARE : export_request::NATIVE;
-#else
-		export_outputs(code == 0x105);
-#endif
+		export_outputs(code == 0x105, std::string(), true);
 	}
 	else if (code == 0x103)
 	{

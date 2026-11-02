@@ -15,6 +15,16 @@ dialog.showMessageBox = async (...args) => {
   return { response: 0 }
 }
 
+// Folder pickers take their answers in turn from HEADLESS_PICK_FOLDERS, separated by ;
+// and cancel once those run out.
+const picks = process.env.HEADLESS_PICK_FOLDERS?.split(';') ?? []
+dialog.showOpenDialog = async (...args) => {
+  const options = args[args.length - 1]
+  const folder = picks.shift()
+  console.log(`[headless] open dialog: ${options.title} | ${folder ?? 'cancelled'}`)
+  return { canceled: !folder, filePaths: folder ? [folder] : [] }
+}
+
 app.on('browser-window-created', (_, win) => {
   // index.ts creates the window show:false, then calls show() on ready-to-show
   win.show = () => {}

@@ -19,6 +19,10 @@ const CANCELLED = new Set([126, 127, 1223]) // pkexec: dialog dismissed, or not 
 const WINDOWS = process.platform === 'win32'
 const BINARY = WINDOWS ? 'maxine.exe' : 'maxine'
 const WINDOWS_ADAPTER = 'MAXINE Emulator'
+// What the driver prints after an export button saves a pair to its snapshot folder. Only these digits
+// and this suffix, so a line from the emulated machine can't name a file elsewhere.
+const EXPORT_LINE = /MAXINE_EXPORT (\d+(-640x480)?\.png)\s*$/
+const EXPORT_KINDS = ['video', 'key']
 const TAP_DOWNLOAD = 'https://build.openvpn.net/downloads/releases/tap-windows-9.24.7-I601-Win10.exe'
 
 interface Layout {
@@ -143,6 +147,9 @@ export class Emulator {
   private lastLine = ''
   private repeats = 0
   private flushTimer: NodeJS.Timeout | null = null
+  private snapFolder = ''
+  private exportFolder: string | undefined
+  private exports: Promise<void> = Promise.resolve()
 
   constructor(private win: BrowserWindow) {}
 
@@ -186,7 +193,50 @@ export class Emulator {
   private receive(chunk: string): void {
     const lines = (this.partial + chunk).split('\n')
     this.partial = lines.pop() ?? ''
-    for (const line of lines) if (line.trim()) this.addLine(line.trimEnd())
+    for (const line of lines) {
+      const exported = EXPORT_LINE.exec(line)
+      if (exported) {
+        const [, name, suffix = ''] = exported
+        const snap = this.snapFolder
+        this.exports = this.exports.then(() => this.saveExport(snap, name, `${suffix}.png`))
+      } else if (line.trim()) this.addLine(line.trimEnd())
+    }
+  }
+
+  /**
+   * The driver saved the pair when the button was pressed, so it's what was on screen however long
+   * this takes. The app asks for the folder because it has a native picker on every system. One at a time.
+   */
+  private async saveExport(snap: string, name: string, suffix: string): Promise<void> {
+    if (this.win.isDestroyed()) return
+    const sources = EXPORT_KINDS.map((kind) => join(snap, `${kind}-${name}`))
+    try {
+      if (this.win.isMinimized()) this.win.restore()
+      this.win.show()
+      this.win.focus()
+      app.focus({ steal: true })
+      const { canceled, filePaths } = await dialog.showOpenDialog(this.win, {
+        title: 'Choose a folder for the Video and Key PNGs',
+        defaultPath: this.exportFolder,
+        properties: ['openDirectory', 'createDirectory']
+      })
+      if (!canceled) {
+        const [folder] = filePaths
+        this.exportFolder = folder
+        // The next number free for both, so nothing in the folder gets replaced
+        let count = 0
+        let targets: string[]
+        do {
+          const number = String(count++).padStart(4, '0')
+          targets = EXPORT_KINDS.map((kind) => join(folder, `${kind}-${number}${suffix}`))
+        } while (targets.some((path) => existsSync(path)))
+        for (const [i, target] of targets.entries()) await copyFile(sources[i], target)
+        this.addLine(`Saved ${targets.map((path) => basename(path)).join(' and ')} in ${folder}`)
+      }
+      await Promise.all(sources.map((path) => rm(path, { force: true })))
+    } catch (err) {
+      this.addLine(`Couldn't save the export: ${(err as Error).message}`)
+    }
   }
 
   async status(cfg: EmulatorConfig): Promise<EmulatorStatus> {
@@ -210,6 +260,7 @@ export class Emulator {
     const folder = folderPath(cfg)
     const disk = diskPath(cfg)
     await mkdir(folder, { recursive: true })
+    this.snapFolder = join(folder, 'snap', 'maxine')
 
     // The firmware writes to its disk, so it runs on a copy that outlives the run
     if (!existsSync(disk)) {

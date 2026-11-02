@@ -370,7 +370,9 @@ python3 tools/phile.py ls emulator/roms/maxine-v11.01.img /SYSTEM/PROGRAMS
   from disk, the frame buffer (`chyronfb.cpp`), Prompts and Color Edit screens, Video and Key export.
   Not working: roll and crawl playout. `emulator/README.md` lists the gaps.
 - The machine has four outputs: Prompts, Color Edit, Video, Key. The window shows the first two, and
-  Right Ctrl exports the others. Video and Key must stay clean of overlays.
+  Right Ctrl exports the others. Video and Key must stay clean of overlays. The panel's export buttons save to the
+  snapshot folder and print `MAXINE_EXPORT`, then `saveExport` in `emulator.ts` asks for a folder and moves the pair,
+  because Electron has a native picker everywhere and Linux has none a driver can rely on.
 - `artwork/make_layout.py` is the single key list, and generates the layout and `maxine_keys.h`. The
   panel holds the keys with no obvious host key, so the arrows are host-only. Every key needs a unique
   name, because MAME's Lua `port.fields` is keyed by name and duplicates silently vanish. The panel

@@ -118,11 +118,13 @@ Each export writes a matching `video` and `key` PNG, at one of two sizes:
 - Square Pixel is 640×480, named `-640x480`. It narrows the picture to 648×486, then crops 4 columns from each side
   and 3 lines from the top and bottom.
 
-Press EXPORT NATIVE or EXPORT SQUARE PIXEL, to the right of the keypad. On Linux and Windows, that saves to
-`snap/maxine/` in the saved image location in the app, or `emulator/run/snap/maxine/` from a checkout. On a Mac, it
-asks for a folder, and so does the Export menu: Command-E for Native, or Shift-Command-E for Square Pixel.
+Press EXPORT NATIVE or EXPORT SQUARE PIXEL, to the right of the keypad, and choose a folder. Run from a checkout,
+without the app, those buttons save to `emulator/run/snap/maxine/` instead.
 
-Right Ctrl or Shift+Right Ctrl saves straight to the snapshot folder on any system.
+On a Mac, the Export menu asks for a folder too: Command-E for Native, or Shift-Command-E for Square Pixel.
+
+Right Ctrl or Shift+Right Ctrl saves straight to the snapshot folder on any system: `snap/maxine/` in the saved image
+location in the app, or `emulator/run/snap/maxine/` from a checkout.
 
 ## Limitations
 

@@ -23,11 +23,9 @@ export default function TopBar({ tab, onTab, status, fontCount }: Props): JSX.El
             Upload
             {fontCount > 0 && <span className={`${ui.mono} ${styles.count}`}>{fontCount}</span>}
           </button>
-          {window.maxine.platform !== 'win32' && (
-            <button className={tab === 'emulator' ? styles.tabActive : styles.tab} onClick={() => onTab('emulator')}>
-              Emulator
-            </button>
-          )}
+          <button className={tab === 'emulator' ? styles.tabActive : styles.tab} onClick={() => onTab('emulator')}>
+            Emulator
+          </button>
         </nav>
       </div>
       <div className={styles.title}>

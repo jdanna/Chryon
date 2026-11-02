@@ -94,6 +94,8 @@ export interface EmulatorStatus {
   missing: string | null
   running: boolean
   network: boolean
+  /** Windows only: the network needs TAP-Windows, which the user installs. */
+  tapMissing: boolean
   image: string
   imageFound: boolean
   folder: string
@@ -177,6 +179,7 @@ export interface MaxineApi {
   emulatorStop(): Promise<void>
   /** Asks for the admin password. Resolves to whether the link is up afterwards. */
   emulatorNetwork(up: boolean): Promise<boolean>
+  openTapDownload(): Promise<void>
   pickEmulatorImage(): Promise<string | null>
   pickEmulatorFolder(): Promise<string | null>
   openEmulatorFolder(cfg: EmulatorConfig): Promise<void>

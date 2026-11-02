@@ -14,9 +14,21 @@ mkdir -p "$MAME/src/mame/chyron"
 cp "$HERE"/src/mame/chyron/* "$MAME/src/mame/chyron/"
 
 # The MVME162's 82596 needs byte order and framing MAME doesn't have
-for PATCH in "$HERE"/patches/*.patch; do
-    git -C "$MAME" apply --reverse --check "$PATCH" 2>/dev/null || git -C "$MAME" apply "$PATCH"
-done
+apply_patches() {
+    for PATCH in "$@"; do
+        git -C "$MAME" apply --reverse --check "$PATCH" 2>/dev/null || git -C "$MAME" apply "$PATCH"
+    done
+}
+apply_patches "$HERE"/patches/*.patch
+
+# Windows is cross-compiled in emulator/Dockerfile.windows, with SDL linked in. It uses the SDL OSD
+# like the other platforms, because the Windows one puts the cursor back on every message pump.
+# The GUI subsystem keeps a console from opening. The arguments here override the make line below.
+if [ "${MAXINE_TARGET:-}" = windows ]; then
+    apply_patches "$HERE"/patches/windows/*.patch
+    set -- TARGETOS=windows OSD=sdl PLATFORM=x86 MINGW64=/usr USE_LIBSDL=0 USE_PCAP=0 USE_TAPTUN=1 TOOLS=0 \
+        LDOPTS=-Wl,--subsystem,windows "$@"
+fi
 
 if ! grep -q '@source:chyron/maxine.cpp' "$MAME/src/mame/mame.lst"; then
     printf '\n@source:chyron/maxine.cpp\nmaxine\n' >> "$MAME/src/mame/mame.lst"

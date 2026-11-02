@@ -52,6 +52,11 @@
 #include <objc/runtime.h>
 #endif
 
+#if defined(_WIN32)
+#include <io.h>
+#include <thread>
+#endif
+
 #include "chyronfb.h"
 #include "maxine_keys.h"
 #include "mcchip.h"
@@ -76,6 +81,20 @@ static void request_quit(int)
 {
 	s_quit_requested = 1;
 }
+
+#if defined(_WIN32)
+
+// Node can only terminate a process on Windows, which loses the NVRAM, so MAXINE! Studio closes
+// stdin instead. The low-level read matters: getchar() would hold a stream lock that exit() needs.
+static void quit_when_stdin_closes()
+{
+	char data;
+	while (_read(0, &data, 1) > 0)
+		;
+	s_quit_requested = 1;
+}
+
+#endif
 
 // Read from a PAL on the real board. Licensed files on the archive's disk image carry this one.
 static constexpr uint16_t SITE_ID = 0x2192;
@@ -253,6 +272,7 @@ private:
 	void key_w(uint8_t data);
 	void host_key(uint8_t data);
 	void paste_text(std::string const &text);
+	void quit_if_requested();
 	void tablet_frame(int x, int y, int buttons);
 	void update_tablet();
 	void mouse_move(int dx, int dy, int buttons);
@@ -557,10 +577,15 @@ uint32_t maxine_state::edit_update(screen_device &screen, bitmap_rgb32 &bitmap, 
 
 // The field interrupt also tells the firmware the video standard: it counts these for a
 // while, and fewer than 58 a second means 625 lines. Video board timing isn't modelled.
-TIMER_CALLBACK_MEMBER(maxine_state::field_tick)
+void maxine_state::quit_if_requested()
 {
 	if (s_quit_requested)
 		machine().schedule_exit();
+}
+
+TIMER_CALLBACK_MEMBER(maxine_state::field_tick)
+{
+	quit_if_requested();
 
 	bim_input_w<2>(ASSERT_LINE);
 
@@ -601,7 +626,11 @@ TIMER_CALLBACK_MEMBER(maxine_state::field_tick)
 		m_shift_lamps[i] = (shift == i) ? 1 : 0;
 	m_shift_lamps[3] = m_tablet_mode ? 1 : 0;
 
+#if defined(_WIN32)
+	bool const paste_pressed = m_host_keys->read() == 6; // Right Alt and V, because Windows keeps Win+V
+#else
 	bool const paste_pressed = m_host_keys->read() == 3; // Command and V
+#endif
 	if (paste_pressed && !m_paste_held)
 		paste_text(osd_get_clipboard_text());
 	m_paste_held = paste_pressed;
@@ -702,6 +731,10 @@ void maxine_state::host_key(uint8_t data)
 {
 	if (BIT(m_host_keys->read(), 0)) // Command belongs to the host
 		return;
+#if defined(_WIN32)
+	if (BIT(m_host_keys->read(), 2) && (data == 'v' || data == 'V')) // only V, so AltGr still types
+		return;
+#endif
 
 	switch (data)
 	{
@@ -1296,7 +1329,13 @@ void maxine_state::machine_start()
 	// For MAXINE! Studio's log field. error.log has no limit, and a stuck chip once wrote 11 GB of it.
 	if (std::getenv("MAXINE_LOG_STDOUT"))
 	{
+#if defined(_WIN32)
+		std::thread(quit_when_stdin_closes).detach();
+		// field_tick stops while the machine is paused, and this doesn't
+		machine().add_notifier(MACHINE_NOTIFY_FRAME, machine_notify_delegate(&maxine_state::quit_if_requested, this));
+#else
 		std::signal(SIGPIPE, SIG_IGN); // losing the app shouldn't lose the machine
+#endif
 		machine().add_logerror_callback([] (char const *text) { std::fputs(text, stdout); std::fflush(stdout); });
 	}
 
@@ -1311,11 +1350,22 @@ void maxine_state::machine_start()
 
 void maxine_state::machine_reset()
 {
+#if defined(_WIN32)
+	// Every TAP adapter is listed, and any of them could be a VPN's, so only emulator/net-up.ps1's is
+	// used. MAME's saved settings hold an index that may now point at another one.
+	int adapter = -1;
+	for (auto const &device : machine().osd().list_network_devices())
+		if (device.description == "MAXINE Emulator")
+			adapter = device.id;
+	if (m_lan->get_interface() != adapter)
+		m_lan->set_interface(adapter);
+#else
 	// emulator/net-up.sh's virtual Ethernet, if it's there: feth0 through pcap on a Mac, and on Linux
 	// the TAP device. This comes after MAME's saved settings.
 	for (auto const &device : machine().osd().list_network_devices())
 		if ((device.description == "feth0" || device.description == "TUN/TAP Device") && m_lan->get_interface() != device.id)
 			m_lan->set_interface(device.id);
+#endif
 
 	boot_stub();
 }
@@ -1333,6 +1383,9 @@ static INPUT_PORTS_START(maxine)
 	PORT_START("HOSTKEYS")
 	PORT_BIT(1, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("Command") PORT_CODE(KEYCODE_LWIN) PORT_CODE(KEYCODE_RWIN)
 	PORT_BIT(2, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("V") PORT_CODE(KEYCODE_V)
+#if defined(_WIN32)
+	PORT_BIT(4, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("Right Alt") PORT_CODE(KEYCODE_RALT)
+#endif
 
 	PORT_START("HOSTSHIFT")
 	PORT_BIT(1, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("S-SHIFT") PORT_CODE(KEYCODE_LSHIFT) PORT_CODE(KEYCODE_RSHIFT)

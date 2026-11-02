@@ -17,6 +17,8 @@ win:
   extraResources:
     - from: resources/python/win32-x64/python
       to: python
+    - from: resources/emulator/win32-x64
+      to: emulator
   target:
     - target: nsis
       arch:

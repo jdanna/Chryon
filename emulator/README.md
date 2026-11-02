@@ -15,9 +15,10 @@ right, and a clickable panel of MAXINE! keys is below them.
 
 ## Instructions
 
-The Emulator tab in MAXINE! Studio is the easy way to run it, on a Mac or Linux. Everything below is for running
-it from a checkout. In the app, the saved image, NVRAM and exports are in the folder shown under Saved image
-location, and Start network asks for your password instead of using `sudo`. On Linux, that needs polkit.
+The Emulator tab in MAXINE! Studio is the easy way to run it, on a Mac, Linux or Windows. Everything below is for
+running it from a checkout, except where it says Windows. In the app, the saved image, NVRAM and exports are in the
+folder shown under Saved image location, and Start network asks for your password instead of using `sudo`. On Linux,
+that needs polkit. On Windows, it's a UAC prompt, and the app is the only way to run the emulator.
 
 On a Mac, it needs Xcode command line tools, Python 3 and SDL2 (`brew install sdl2`). On Ubuntu, it needs
 `sudo apt install libsdl2-dev libsdl2-ttf-dev libasound2-dev libpcap-dev`. The first build takes a long time.
@@ -52,12 +53,12 @@ your work is kept. Delete that file to start over. The default has software opti
 | F1–F10 | F1–F10 |
 | F11, F12 | CRAWL, ROLL |
 | Numeric keypad | KEYPAD |
-| Fn+Delete | ERASE, which clears the whole message |
+| Fn+Delete, or Delete on a PC keyboard | ERASE, which clears the whole message |
 
 Everything else is on the panel. Its SHIFT keys stay latched until clicked again and apply to the arrow keys.
 Holding the host's Shift as well moves further. MODE SLCT opens the menu that exits to the Loader.
 
-Command-V pastes the clipboard as plain ASCII.
+Command-V pastes the clipboard as plain ASCII. On Windows, it's Right Alt+V, because Windows keeps Win+V.
 
 ### Mouse
 
@@ -86,6 +87,11 @@ It creates a virtual Ethernet link and gives your computer 10.37.0.1. `sudo emul
 10.37.0.2. Its disk needs the Networking option, which the default disk has. Change the MAXINE's address in
 the Loader's Setup, under Network, then Save Values. The address is kept in `/SYSTEM/ETC/NET_CONF` on the disk.
 
+On Windows, install [TAP-Windows](https://build.openvpn.net/downloads/releases/tap-windows-9.24.7-I601-Win10.exe) with
+its default options, then press Start network in the app. That adds an adapter called `MAXINE Emulator` and a firewall
+rule for it, and they stay across reboots. Stop network removes both and leaves TAP-Windows and any other adapters
+alone. Press it before uninstalling the app. Windows on Arm can't use the driver.
+
 On Linux, the link is a TAP device called `tap-mess-<your user ID>-0`, so run the emulator as the user who ran
 the script, not as root.
 
@@ -107,12 +113,13 @@ it over FTP and reboot the emulator. See `docs/remote-control-research.md` for t
 ### Export
 
 On a Mac, use Export > Video and Key in the menu bar, or Command-E, and choose a folder. Right Ctrl saves to
-`emulator/run/snap/maxine/` instead. Each export writes 720×486 `video` and `key` PNGs, plus `-square` copies
+`emulator/run/snap/maxine/` instead, or to `snap/maxine/` in the saved image location in the app, and it's the only
+way on Linux and Windows. Each export writes 720×486 `video` and `key` PNGs, plus `-square` copies
 at 648×486 for square-pixel tools.
 
 ## Limitations
 
-- Tested on macOS and Ubuntu 24.04.
+- Tested on macOS and Ubuntu 24.04. Windows 10 and 11 x64 are new.
 - Your computer can reach the MAXINE, but the MAXINE can't reach the wider network through it. Telnet login
   and the Intelligent Interface haven't been tested past connecting.
 - No boot PROM dump: the driver loads the operating system from disk itself.

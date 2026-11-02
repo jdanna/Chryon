@@ -30,6 +30,7 @@ const api: MaxineApi = {
   emulatorStart: (cfg) => ipcRenderer.invoke('emulator:start', cfg),
   emulatorStop: () => ipcRenderer.invoke('emulator:stop'),
   emulatorNetwork: (up) => ipcRenderer.invoke('emulator:network', up),
+  openTapDownload: () => ipcRenderer.invoke('emulator:tap-download'),
   pickEmulatorImage: () => ipcRenderer.invoke('emulator:pick-image'),
   pickEmulatorFolder: () => ipcRenderer.invoke('emulator:pick-folder'),
   openEmulatorFolder: (cfg) => ipcRenderer.invoke('emulator:open-folder', cfg),

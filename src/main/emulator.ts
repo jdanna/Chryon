@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { ChildProcess, execFile, spawn } from 'child_process'
 import { existsSync, readFileSync } from 'fs'
 import { chmod, copyFile, mkdir, open, readFile, rename, rm, stat, writeFile } from 'fs/promises'
+import { tmpdir } from 'os'
 import { basename, isAbsolute, join } from 'path'
 import { promisify } from 'util'
 import type { EmulatorConfig, EmulatorStatus, NvramFile } from '@shared/types'
@@ -14,7 +15,11 @@ const LOG_FLUSH_MS = 100
 const LOG_BATCH_LINES = 500
 const CHD_MAGIC = 'MComprHD'
 const DEFAULT_IMAGE = 'maxine-default.chd'
-const CANCELLED = new Set([126, 127]) // pkexec: dialog dismissed, or not authorised
+const CANCELLED = new Set([126, 127, 1223]) // pkexec: dialog dismissed, or not authorised. Windows: UAC declined
+const WINDOWS = process.platform === 'win32'
+const BINARY = WINDOWS ? 'maxine.exe' : 'maxine'
+const WINDOWS_ADAPTER = 'MAXINE Emulator'
+const TAP_DOWNLOAD = 'https://build.openvpn.net/downloads/releases/tap-windows-9.24.7-I601-Win10.exe'
 
 interface Layout {
   binary: string
@@ -31,7 +36,7 @@ function layout(): Layout {
   if (app.isPackaged) {
     const root = join(process.resourcesPath, 'emulator')
     return {
-      binary: join(root, 'maxine'),
+      binary: join(root, BINARY),
       plugins: join(root, 'plugins'),
       artwork: join(root, 'artwork'),
       roms: join(root, 'roms'),
@@ -41,7 +46,7 @@ function layout(): Layout {
   }
   const root = join(app.getAppPath(), 'emulator')
   return {
-    binary: join(root, 'mame', 'maxine'),
+    binary: join(root, 'mame', BINARY),
     plugins: join(root, 'mame', 'plugins'),
     artwork: join(root, 'artwork'),
     roms: join(root, 'roms'),
@@ -76,8 +81,35 @@ async function elevate(script: string): Promise<void> {
   }
 }
 
+/**
+ * UAC can't pass output back, so the script leaves its error in a file. The script runs from its real
+ * path, because a Windows package has no FUSE mount to get in the way.
+ */
+async function elevateWindows(script: string): Promise<void> {
+  const errorFile = join(tmpdir(), 'maxine-network-error.txt')
+  await rm(errorFile, { force: true })
+  const quoted = (text: string): string => `'"${text.replaceAll("'", "''")}"'`
+  const args = ["'-NoProfile'", "'-ExecutionPolicy'", "'Bypass'", "'-File'", quoted(script), quoted(errorFile)].join(',')
+  const command = `try { $p = Start-Process powershell.exe -Verb RunAs -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop -ArgumentList ${args}; exit $p.ExitCode } catch { exit 1223 }`
+  try {
+    await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], { windowsHide: true })
+  } catch (err) {
+    const message = await readFile(errorFile, 'utf8').catch(() => null)
+    throw message ? Object.assign(new Error(message.trim()), { code: 1 }) : err
+  }
+}
+
+function tapInstalled(): boolean {
+  return existsSync(join(process.env['ProgramFiles'] ?? 'C:\\Program Files', 'TAP-Windows', 'bin', 'tapinstall.exe'))
+}
+
 async function networkUp(): Promise<boolean> {
   try {
+    if (WINDOWS) {
+      // A TAP adapter with no client is disconnected, and Node doesn't list those
+      const { stdout } = await run('netsh', ['interface', 'ipv4', 'show', 'addresses', WINDOWS_ADAPTER], { windowsHide: true })
+      return stdout.includes('10.37.0.1')
+    }
     if (process.platform === 'linux') {
       const flags = readFileSync(`/sys/class/net/tap-mess-${process.getuid!()}-0/flags`, 'utf8')
       return (parseInt(flags, 16) & 1) !== 0 // IFF_UP
@@ -87,6 +119,18 @@ async function networkUp(): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+/**
+ * MAME opens the adapter index saved in its cfg before the driver can choose, and on Windows that
+ * index may now be a VPN's TAP adapter, which only one program can hold.
+ */
+async function forgetNetworkInterface(folder: string): Promise<void> {
+  const path = join(folder, 'cfg', 'maxine.cfg')
+  const cfg = await readFile(path, 'utf8').catch(() => null)
+  if (cfg === null) return
+  const cleaned = cfg.replace(/[ \t]*<network>[\s\S]*?<\/network>\s*/g, '')
+  if (cleaned !== cfg) await writeFile(path, cleaned)
 }
 
 /** Owns the MAME process. Only one runs at a time, because it takes the only network interface. */
@@ -151,6 +195,7 @@ export class Emulator {
       missing: existsSync(paths.binary) ? null : app.isPackaged ? 'This build has no emulator.' : 'Run emulator/build.sh first.',
       running: this.running,
       network: await networkUp(),
+      tapMissing: WINDOWS && !tapInstalled(),
       image: imagePath(cfg),
       imageFound: existsSync(imagePath(cfg)),
       folder: folderPath(cfg),
@@ -190,12 +235,14 @@ export class Emulator {
       // The headless tests run with no display
       ...(process.env['MAXINE_EMULATOR_ARGS']?.split(' ').filter(Boolean) ?? [])
     ]
+    if (WINDOWS) await forgetNetworkInterface(folder)
     const libraryPath = [paths.lib, process.env['LD_LIBRARY_PATH']].filter(Boolean).join(':')
     const child = spawn(paths.binary, args, {
       cwd: folder,
       env: { ...process.env, MAXINE_LOG_STDOUT: '1', ...(paths.lib ? { LD_LIBRARY_PATH: libraryPath } : {}) },
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: [WINDOWS ? 'pipe' : 'ignore', 'pipe', 'pipe']
     })
+    child.stdin?.on('error', () => {}) // a pipe that broke because it exited, which 'exit' reports
     this.child = child
     this.lastLine = ''
     this.partial = ''
@@ -220,11 +267,15 @@ export class Emulator {
     this.send('emulator:state', true)
   }
 
-  /** SIGTERM is what saves the NVRAM: the driver turns it into a normal exit. */
+  /**
+   * SIGTERM is what saves the NVRAM: the driver turns it into a normal exit. Node's kill() on Windows
+   * just ends the process, so there the driver watches for stdin closing instead.
+   */
   async stop(): Promise<void> {
     const child = this.child
     if (!child) return
-    child.kill('SIGTERM')
+    if (WINDOWS) child.stdin!.end()
+    else child.kill('SIGTERM')
     const timer = setTimeout(() => {
       this.addLine("The emulator didn't stop, so it was killed. Any NVRAM changes from this run are lost.")
       child.kill('SIGKILL')
@@ -236,9 +287,9 @@ export class Emulator {
   /** Resolves to whether the link is up, which is unchanged if the password prompt was cancelled. */
   async setNetwork(up: boolean): Promise<boolean> {
     if (this.child) throw new Error('Stop the emulator first. It only attaches to the network when it starts.')
-    const script = await readFile(join(layout().scripts, up ? 'net-up.sh' : 'net-down.sh'), 'utf8')
     try {
-      await elevate(script)
+      if (WINDOWS) await elevateWindows(join(layout().scripts, up ? 'net-up.ps1' : 'net-down.ps1'))
+      else await elevate(await readFile(join(layout().scripts, up ? 'net-up.sh' : 'net-down.sh'), 'utf8'))
     } catch (err) {
       const { code, message } = err as NodeJS.ErrnoException & { code?: string | number }
       if (code === 'ENOENT') throw new Error('pkexec is missing, so the app can\'t ask for your password. Install polkit.')
@@ -279,6 +330,8 @@ export function registerEmulator(win: BrowserWindow): Emulator {
     await mkdir(folderPath(cfg), { recursive: true })
     await shell.openPath(folderPath(cfg))
   })
+
+  ipcMain.handle('emulator:tap-download', () => shell.openExternal(TAP_DOWNLOAD))
 
   ipcMain.handle('emulator:pick-image', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog(win, {

@@ -225,7 +225,7 @@ startup, so a name that differs from `productName` crashes the packaged app with
 npm run dev            # needs python3 with Pillow, numpy, fontTools
 npm run typecheck
 npm run test:headless  # build, then run scripts/headless/smoke.json with no window
-npm run predist:mac | predist:win | predist:linux     # Python, and the emulator except on Windows
+npm run predist:mac | predist:win | predist:linux     # Python and the emulator
 npm run dist:mac | dist:win | dist:linux | release     # unsigned installers
 ```
 
@@ -290,17 +290,26 @@ npm run dist:mac | dist:win | dist:linux | release     # unsigned installers
   limits. Which setting matters isn't known, because they all changed together, so
   change one at a time if lowering them. Reads have never hung it: 8 `LIST`/`NLST` in
   one quick run were fine.
-- The Emulator tab (`src/main/emulator.ts`, `EmulatorTab.tsx`, `NvramPanel.tsx`) is hidden on Windows. Confirmed on
+- The Emulator tab (`src/main/emulator.ts`, `EmulatorTab.tsx`, `NvramPanel.tsx`) runs on all three platforms. Confirmed on
   2026-11-02 in a Linux AppImage, except the real password prompt. Nothing Mac-specific has been run yet: the tab, the
   `osascript` prompt, or `bundleDylibs` in the vendor script. The tab's two
   paths are a read-only `.chd`, empty for the built-in default, and a folder holding `disk.chd`, `nvram/`, `cfg/` and
   `snap/`, empty for `<userData>/emulator`. Only `disk.chd` is ever deleted, by Reset. Tests set
   `MAXINE_EMULATOR_ARGS`, which is appended to MAME's arguments, plus `SDL_VIDEODRIVER=dummy`.
 - Stop sends SIGTERM, which `maxine.cpp` turns into a clean exit. SDL catches that signal and posts an event MAME
-  ignores, so without the driver's handler a kill never saves NVRAM. Quitting the app waits for that exit.
+  ignores, so without the driver's handler a kill never saves NVRAM. Quitting the app waits for that exit. On Windows,
+  Node's `kill()` only terminates, so stdin is a pipe there and closing it is the signal: a driver thread blocks in
+  `_read`, not `getchar`, whose stream lock could hang `exit()`.
 - The log field reads stdout. `MAXINE_LOG_STDOUT` makes the driver send `logerror` there, so no `error.log` grows.
 - `net-up.sh` and `net-down.sh` run as root by passing their text to `pkexec /bin/sh -c`, or through `osascript` on a
   Mac, because root can't read inside an AppImage's FUSE mount. Check a change to them from a packaged app.
+- On Windows, `net-up.ps1` and `net-down.ps1` run elevated from their real path, through `Start-Process -Verb RunAs`. UAC
+  can't return output, so errors come back in a temp file, and a declined prompt exits 1223. The user installs
+  TAP-Windows in its default folder, because the user chose on 2026-11-02 not to ship the driver. Only the adapter named
+  `MAXINE Emulator` is ever used: `net-up.ps1` always creates a new one, the driver matches that name, and
+  `forgetNetworkInterface` strips `<network>` from `cfg/maxine.cfg` before each run, because MAME opens the saved index
+  before `machine_reset` and it could be a VPN's adapter. Never rename an existing adapter or run `tapinstall remove`.
+  A TAP adapter with no client is disconnected and Node doesn't list it, so status comes from `netsh`.
 - `shared/nvram.ts` lists the only NVRAM fields the editor shows, as the user chose on 2026-11-02: both serial records,
   Tel No Login, Ethernet and Debug mode. The rest stay at their defaults. Leave out anything the firmware overwrites at
   boot: `$76c`, `$774` and `$77c`–`$78f` come from `NET_CONF` on the disk.
@@ -308,6 +317,14 @@ npm run dist:mac | dist:win | dist:linux | release     # unsigned installers
   electron-builder copies to `resources/emulator`. Linux builds in Docker on Ubuntu 22.04 in `emulator/mame-linux-x64`,
   so the binary needs glibc 2.35 or newer, and `collect-libs.sh` bundles SDL and the like, but not glibc, the GL stack
   or what Electron needs anyway. `MAXINE_NATIVE_BUILD=1` builds on the host instead. `release` on a Mac needs Docker.
+  Windows cross-compiles with mingw in `emulator/Dockerfile.windows`, into `emulator/mame-win32-x64`, when `build.sh` sees
+  `MAXINE_TARGET=windows`. It uses the SDL OSD, statically linked, so `sdlmaxine.exe` needs no DLLs and goes in as
+  `maxine.exe`. Upstream CI doesn't build that combination, so the fixes are in `emulator/patches/windows/`, which only
+  that build applies. `OSD=windows` isn't an option without patching MAME, because it resets the cursor count on every
+  message pump. Wine runs the exe for tests, with `xvfb-run`, but has no TAP driver. On Linux with Wine 11 Staging,
+  electron-builder's NSIS step hangs on its uninstaller stub, while `--win --dir` works. Installers come from the Mac.
+  Tested on 2026-11-02 under Wine only: boot, log, a stop through stdin that saves NVRAM, and a real window. Nothing
+  has run on real Windows yet: the app, the keys, UAC, TAP, the firewall rule or the installer.
 - Headless screenshots time out on Linux once the hidden window has updated. Use `xvfb-run -a node
   scripts/headless/driver.mjs steps.json --show`, but that real window doesn't auto-answer dialogs.
 - Remote control isn't built. "Plan for MAXINE! Studio remote control" in `docs/remote-control-research.md` has the

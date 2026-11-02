@@ -1,0 +1,18 @@
+# Cross-compiles the Windows emulator that goes in the installer. It runs natively on an Apple Silicon Mac as
+# well as on x86, since only the output is Windows x64. MAME needs GCC 11, and threads need the posix mingw.
+FROM ubuntu:24.04
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential ca-certificates curl g++-mingw-w64-x86-64-posix git python3
+# Docker Desktop reports a folder made inside a mount as root's, and git refuses to use a repository like that
+RUN git config --system --add safe.directory '*'
+RUN update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix && \
+    update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix
+
+# MAME finds these headers and libraries on the compiler's own paths
+RUN curl -fsSL -o /tmp/sdl.tar.gz https://github.com/libsdl-org/SDL/releases/download/release-2.32.10/SDL2-devel-2.32.10-mingw.tar.gz && \
+    echo '83a5d74012311edc3c0d40ea6faecbe57ad692aa033fa5dc273cc937e3938ff2  /tmp/sdl.tar.gz' | sha256sum -c - && \
+    tar xzf /tmp/sdl.tar.gz -C /tmp && \
+    cp -r /tmp/SDL2-2.32.10/x86_64-w64-mingw32/include/SDL2 /usr/x86_64-w64-mingw32/include/ && \
+    cp /tmp/SDL2-2.32.10/x86_64-w64-mingw32/lib/libSDL2.a /tmp/SDL2-2.32.10/x86_64-w64-mingw32/lib/libSDL2main.a \
+        /usr/x86_64-w64-mingw32/lib/ && \
+    rm -rf /tmp/sdl.tar.gz /tmp/SDL2-2.32.10

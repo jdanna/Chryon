@@ -1,0 +1,27 @@
+diff --git a/scripts/src/osd/sdl.lua b/scripts/src/osd/sdl.lua
+--- a/scripts/src/osd/sdl.lua
++++ b/scripts/src/osd/sdl.lua
+@@ -57,9 +57,12 @@ function maintargetosdoptions(_target,_subtarget)
+ 		if _OPTIONS["USE_LIBSDL"]~="1" then
+ 			configuration { "mingw*"}
+ 				links {
++					"mingw32",
+ 					"SDL2main",
+ 					"SDL2",
+ 					"imm32",
++					"ksuser",
++					"setupapi",
+ 					"version",
+ 				}
+ 			configuration { "vs*" }
+diff --git a/src/osd/modules/sound/mmdevice_helpers.cpp b/src/osd/modules/sound/mmdevice_helpers.cpp
+--- a/src/osd/modules/sound/mmdevice_helpers.cpp
++++ b/src/osd/modules/sound/mmdevice_helpers.cpp
+@@ -1,5 +1,7 @@
+ // license:BSD-3-Clause
+ // copyright-holders:Vas Crabb
++#include <initguid.h> // no library in mingw-w64 11 has the property keys
++
+ #include "mmdevice_helpers.h"
+ 
+ #if defined(_WIN32)

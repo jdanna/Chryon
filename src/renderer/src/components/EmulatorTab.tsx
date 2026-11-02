@@ -28,6 +28,7 @@ export default function EmulatorTab({ settings, onSettings, log, setStatus }: Pr
   const followOutput = useRef(true)
 
   const running = status?.running ?? false
+  const needsTap = (status?.tapMissing ?? false) && !status?.network
 
   const refresh = useCallback(async () => {
     try {
@@ -40,6 +41,13 @@ export default function EmulatorTab({ settings, onSettings, log, setStatus }: Pr
   useEffect(() => {
     refresh()
   }, [refresh])
+
+  // The user installs TAP-Windows outside the app, then comes back
+  useEffect(() => {
+    if (!status?.tapMissing) return
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
+  }, [status?.tapMissing, refresh])
 
   useEffect(
     () =>
@@ -145,9 +153,15 @@ export default function EmulatorTab({ settings, onSettings, log, setStatus }: Pr
         </div>
         <div className={styles.block}>
           <div className={styles.buttons}>
-            <button className={ui.btn} disabled={networkBusy || running || status?.network} onClick={() => setNetwork(true)}>
-              Start network
-            </button>
+            {needsTap ? (
+              <button className={ui.btn} onClick={() => api.openTapDownload()}>
+                Download TAP-Windows
+              </button>
+            ) : (
+              <button className={ui.btn} disabled={networkBusy || running || status?.network} onClick={() => setNetwork(true)}>
+                Start network
+              </button>
+            )}
             <button className={ui.btn} disabled={networkBusy || running || !status?.network} onClick={() => setNetwork(false)}>
               Stop network
             </button>
@@ -157,7 +171,11 @@ export default function EmulatorTab({ settings, onSettings, log, setStatus }: Pr
               ? 'The emulator only attaches when it starts, so stop it to change this.'
               : status?.network
                 ? 'This computer is 10.37.0.1, and the MAXINE will be 10.37.0.2.'
-                : 'Asks for your password. Lasts until you restart your computer.'}
+                : needsTap
+                  ? 'The network needs the free TAP-Windows driver from OpenVPN. Install it with the default options, then come back here.'
+                  : api.platform === 'win32'
+                    ? 'Asks for administrator approval. Stays set up until you stop it.'
+                    : 'Asks for your password. Lasts until you restart your computer.'}
           </div>
         </div>
 

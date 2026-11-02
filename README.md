@@ -54,7 +54,7 @@ npm run predist:mac   # or predist:win, predist:linux
 npm run dist:mac      # or dist:win, dist:linux
 ```
 
-`predist` fetches Python and builds the emulator, which uses Docker for Linux.
+`predist` fetches Python and builds the emulator, which uses Docker for Linux and Windows.
 
 ## More
 

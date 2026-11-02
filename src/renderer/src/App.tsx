@@ -124,11 +124,9 @@ export default function App(): JSX.Element {
             setStatus={setStatus}
           />
         </div>
-        {api.platform !== 'win32' && (
-          <div className={styles.tabView} hidden={tab !== 'emulator'}>
-            <EmulatorTab settings={settings.emulator} onSettings={(emulator) => setSettings({ ...settings, emulator })} log={addLog} setStatus={setStatus} />
-          </div>
-        )}
+        <div className={styles.tabView} hidden={tab !== 'emulator'}>
+          <EmulatorTab settings={settings.emulator} onSettings={(emulator) => setSettings({ ...settings, emulator })} log={addLog} setStatus={setStatus} />
+        </div>
       </div>
       <LogPanel entries={log} onClear={() => setLog([])} />
       {dragging && (

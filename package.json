@@ -16,7 +16,7 @@
     "download-python": "node scripts/download-python.mjs",
     "predist:mac": "node scripts/download-python.mjs darwin arm64 && node scripts/vendor-python-packages.mjs darwin arm64 && node scripts/vendor-emulator.mjs darwin arm64",
     "dist:mac": "electron-vite build && electron-builder --mac",
-    "predist:win": "node scripts/download-python.mjs win32 x64 && node scripts/vendor-python-packages.mjs win32 x64",
+    "predist:win": "node scripts/download-python.mjs win32 x64 && node scripts/vendor-python-packages.mjs win32 x64 && node scripts/vendor-emulator.mjs win32 x64",
     "dist:win": "electron-vite build && electron-builder --win",
     "predist:linux": "node scripts/download-python.mjs linux x64 && node scripts/vendor-python-packages.mjs linux x64 && node scripts/vendor-emulator.mjs linux x64",
     "dist:linux": "electron-vite build && electron-builder --linux",

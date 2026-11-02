@@ -1,8 +1,12 @@
 # MAXINE! Studio
 
 A desktop app that converts fonts for the Chyron MAXINE! and other iNFiNiT! series character generators.
+On Mac and Linux, it also emulates the whole machine, so you can run the real MAXINE! software without the
+hardware.
 
 ![Comic Sans on a Sony CRT, with the MAXINE! control screen beside it](docs/maxine-crt.jpg)
+
+![The emulator running Message Compose](docs/emulator.png)
 
 ## Preview a font
 
@@ -30,12 +34,10 @@ when it's on the unit.
 
 ## Run the emulator
 
-On Mac and Linux, the Emulator tab runs the real MAXINE! software, built into the app. Press Run and it opens in
-its own window. Start the network first to reach it over FTP at 10.37.0.2.
+The emulator is built into the app. On the Emulator tab, press Run and it opens in its own window. Start the
+network first to reach it over FTP at 10.37.0.2.
 
 ![The Emulator tab](docs/emulator-tab.png)
-
-![The emulator running Message Compose](docs/emulator.png)
 
 Keys and details are in [emulator/README.md](emulator/README.md).
 

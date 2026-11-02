@@ -26,6 +26,19 @@ const run = (cmd, args, options = {}) => execFileSync(cmd, args, { cwd: ROOT, st
 const read = (cmd, args) => execFileSync(cmd, args, { encoding: 'utf8' })
 const dockerWorks = () => spawnSync('docker', ['info'], { stdio: 'ignore' }).status === 0
 
+/** A Mac can start Docker Desktop itself, which takes up to a few minutes. */
+function ensureDocker() {
+  if (dockerWorks()) return true
+  if (process.platform !== 'darwin') return false
+  console.log('  Starting Docker Desktop')
+  if (spawnSync('open', ['-a', 'Docker']).status !== 0) return false
+  for (let attempt = 0; attempt < 60; attempt++) {
+    if (dockerWorks()) return true
+    spawnSync('sleep', ['3'])
+  }
+  return false
+}
+
 function docker(tree, command) {
   const user = process.getuid ? ['-u', `${process.getuid()}:${process.getgid()}`] : []
   run('docker', [
@@ -59,7 +72,7 @@ function vendorLinux(dest) {
     run(join(EMULATOR, 'collect-libs.sh'), [join(dest, 'maxine'), join(dest, 'lib')])
     return
   }
-  if (!dockerWorks()) {
+  if (!ensureDocker()) {
     throw new Error('The Linux emulator builds in Docker, and Docker is not running. On Linux, set MAXINE_NATIVE_BUILD=1 to build on this computer instead, which ties the package to its glibc or newer.')
   }
   const tree = 'emulator/mame-linux-x64'

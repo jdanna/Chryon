@@ -5,3 +5,5 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential ca-certificates git python3 \
     libfontconfig-dev libgl-dev libpcap-dev libsdl2-dev libsdl2-ttf-dev \
     libx11-dev libxext-dev libxi-dev libxinerama-dev
+# Docker Desktop reports a folder made inside a mount as root's, and git refuses to use a repository like that
+RUN git config --system --add safe.directory '*'

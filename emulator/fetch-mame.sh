@@ -7,11 +7,13 @@ COMMIT=1a8349fbf9a453069cf3f49c29d7117ddcf10fde
 HERE=$(cd "$(dirname "$0")" && pwd)
 MAME=${MAXINE_MAME_DIR:-$HERE/mame}
 
-if [ -d "$MAME/.git" ]; then
+# A fetch that failed leaves .git behind, so only a checked out tree counts as done
+if [ -f "$MAME/makefile" ]; then
     echo "$MAME already exists"
     exit 0
 fi
 
+rm -rf "$MAME/.git"
 git init "$MAME"
 cd "$MAME"
 git remote add origin https://github.com/mamedev/mame.git

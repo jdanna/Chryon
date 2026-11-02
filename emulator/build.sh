@@ -8,7 +8,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 # MAXINE_MAME_DIR keeps a separate tree, which is how the packaged Linux build stays apart from this one
 MAME=${MAXINE_MAME_DIR:-$HERE/mame}
 
-[ -d "$MAME/.git" ] || MAXINE_MAME_DIR=$MAME "$HERE/fetch-mame.sh"
+[ -f "$MAME/makefile" ] || MAXINE_MAME_DIR=$MAME "$HERE/fetch-mame.sh"
 
 mkdir -p "$MAME/src/mame/chyron"
 cp "$HERE"/src/mame/chyron/* "$MAME/src/mame/chyron/"

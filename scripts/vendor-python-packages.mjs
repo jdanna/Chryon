@@ -33,7 +33,6 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 // tags are exact, and wheels land on any of several glibc tags, so list them.
 const TARGETS = {
   'darwin-arm64': { platformTags: ['macosx_14_0_arm64'] },
-  'darwin-x64': { platformTags: ['macosx_14_0_x86_64'] },
   'win32-x64': { platformTags: ['win_amd64'] },
   'linux-x64': { platformTags: ['manylinux_2_17_x86_64', 'manylinux2014_x86_64', 'manylinux_2_27_x86_64', 'manylinux_2_28_x86_64'] }
 }

@@ -243,7 +243,8 @@ npm run dist:mac | dist:win | dist:linux | release     # unsigned installers
 - Packaged builds run a python-build-standalone interpreter from
   `resources/python/<platform>-<arch>/` (gitignored), with the pins in
   `resources/requirements-prod.txt` vendored in by
-  `scripts/vendor-python-packages.mjs`. One Mac can build all three platforms.
+  `scripts/vendor-python-packages.mjs`. One Mac can build all three platforms. The Mac
+  build is Apple Silicon only; Intel Mac support was removed on 2026-11-02.
   The interpreter runs with `-I` and `pycache_prefix` under userData, so no
   `.pyc` lands in the install folder.
 - Previews: `ttf2maxine.source_sheet` draws the source outlines with the converter's

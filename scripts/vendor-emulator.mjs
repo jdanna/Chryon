@@ -9,7 +9,7 @@
  *
  * Linux builds in Docker on Ubuntu 22.04 (emulator/Dockerfile.linux), which works from a Mac as well
  * and keeps the binary off this computer's newer glibc. MAXINE_NATIVE_BUILD=1 builds here instead.
- * A Mac builds natively. On Apple Silicon the x64 build needs Intel Homebrew's SDL2 in /usr/local.
+ * A Mac build is arm64 only, and builds natively.
  */
 
 import { execFileSync, spawnSync } from 'node:child_process'
@@ -105,23 +105,10 @@ function bundleDylibs(dest) {
   }
 }
 
-function vendorMac(dest, arch) {
-  if (process.platform !== 'darwin') throw new Error('The Mac emulator has to be built on a Mac.')
-  const native = arch === process.arch
-  if (native) {
-    run(join(EMULATOR, 'build.sh'), [])
-    assemble(dest, 'emulator/mame')
-  } else {
-    if (arch !== 'x64') throw new Error(`An ${process.arch} Mac can't build for ${arch}.`)
-    if (!existsSync('/usr/local/bin/sdl2-config')) {
-      throw new Error('The x64 emulator needs Intel Homebrew SDL2. Install Homebrew under Rosetta in /usr/local, then run: arch -x86_64 /usr/local/bin/brew install sdl2')
-    }
-    const tree = 'emulator/mame-darwin-x64'
-    run('arch', ['-x86_64', '/bin/sh', join(EMULATOR, 'build.sh')], {
-      env: { ...process.env, MAXINE_MAME_DIR: join(ROOT, tree), PATH: `/usr/local/bin:${process.env.PATH}` }
-    })
-    assemble(dest, tree)
-  }
+function vendorMac(dest) {
+  if (process.platform !== 'darwin' || process.arch !== 'arm64') throw new Error('The Mac emulator has to be built on an Apple Silicon Mac.')
+  run(join(EMULATOR, 'build.sh'), [])
+  assemble(dest, 'emulator/mame')
   bundleDylibs(dest)
 }
 
@@ -138,14 +125,14 @@ function check(dest, platform, arch) {
 }
 
 const [platform, arch] = process.argv.slice(2)
-if (!['linux', 'darwin'].includes(platform) || !['x64', 'arm64'].includes(arch)) {
-  console.error('Usage: vendor-emulator.mjs <linux|darwin> <x64|arm64>')
+if (!(platform === 'darwin' && arch === 'arm64') && !(platform === 'linux' && ['x64', 'arm64'].includes(arch))) {
+  console.error('Usage: vendor-emulator.mjs darwin arm64 | linux <x64|arm64>')
   process.exit(1)
 }
 
 const dest = join(ROOT, 'resources', 'emulator', `${platform}-${arch}`)
 console.log(`Emulator for ${platform}-${arch}`)
 if (platform === 'linux') vendorLinux(dest)
-else vendorMac(dest, arch)
+else vendorMac(dest)
 check(dest, platform, arch)
 console.log(`  ${relative(ROOT, dest)}`)

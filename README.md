@@ -41,8 +41,8 @@ Keys and details are in [emulator/README.md](emulator/README.md).
 
 ## Get the app
 
-[Download the latest release](https://github.com/jdanna/MaxineStudio/releases/latest) for Mac,
-Windows or Linux. Builds aren't signed, so your system may warn you or refuse to open
+[Download the latest release](https://github.com/jdanna/MaxineStudio/releases/latest) for Apple
+Silicon Macs, Windows or Linux. Builds aren't signed, so your system may warn you or refuse to open
 the app at first.
 
 To build it yourself, install [Node.js](https://nodejs.org) and run one of these. The

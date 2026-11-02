@@ -42,7 +42,6 @@ function wipeDistExceptReleases(distDir) {
 function collect({ distDir, releaseDir, version }) {
   const found = {
     arm64: findFile(distDir, (f) => f.endsWith('-arm64.dmg')),
-    x64: findFile(distDir, (f) => f.endsWith('-x64.dmg')),
     win: findFile(distDir, (f) => f.endsWith('-setup.exe')),
     linux: findFile(distDir, (f) => f.endsWith('.AppImage')),
   }

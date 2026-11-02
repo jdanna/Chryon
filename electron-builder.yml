@@ -30,14 +30,13 @@ mac:
   category: public.app-category.utilities
   identity: null
   extraResources:
-    - from: resources/python/darwin-${arch}/python
+    - from: resources/python/darwin-arm64/python
       to: python
-    - from: resources/emulator/darwin-${arch}
+    - from: resources/emulator/darwin-arm64
       to: emulator
   target:
     - target: dmg
       arch:
-        - x64
         - arm64
 dmg:
   artifactName: ${name}-${version}-${arch}.${ext}

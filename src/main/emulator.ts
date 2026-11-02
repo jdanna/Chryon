@@ -106,9 +106,10 @@ function tapInstalled(): boolean {
 async function networkUp(): Promise<boolean> {
   try {
     if (WINDOWS) {
-      // A TAP adapter with no client is disconnected, and Node doesn't list those
-      const { stdout } = await run('netsh', ['interface', 'ipv4', 'show', 'addresses', WINDOWS_ADAPTER], { windowsHide: true })
-      return stdout.includes('10.37.0.1')
+      // A TAP adapter with no client is disconnected, so Node doesn't list it and it has no active address.
+      // net-up.ps1 makes the adapter and net-down.ps1 removes it, so being listed here means the link is set up.
+      const { stdout } = await run('netsh', ['interface', 'show', 'interface'], { windowsHide: true })
+      return stdout.includes(WINDOWS_ADAPTER)
     }
     if (process.platform === 'linux') {
       const flags = readFileSync(`/sys/class/net/tap-mess-${process.getuid!()}-0/flags`, 'utf8')

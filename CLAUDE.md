@@ -309,7 +309,8 @@ npm run dist:mac | dist:win | dist:linux | release     # unsigned installers
   `MAXINE Emulator` is ever used: `net-up.ps1` always creates a new one, the driver matches that name, and
   `forgetNetworkInterface` strips `<network>` from `cfg/maxine.cfg` before each run, because MAME opens the saved index
   before `machine_reset` and it could be a VPN's adapter. Never rename an existing adapter or run `tapinstall remove`.
-  A TAP adapter with no client is disconnected and Node doesn't list it, so status comes from `netsh`.
+  A TAP adapter with no client is disconnected, so Node doesn't list it and it has no active address, and status is whether
+  `netsh interface show interface` lists it.
 - `shared/nvram.ts` lists the only NVRAM fields the editor shows, as the user chose on 2026-11-02: both serial records,
   Tel No Login, Ethernet and Debug mode. The rest stay at their defaults. Leave out anything the firmware overwrites at
   boot: `$76c`, `$774` and `$77c`–`$78f` come from `NET_CONF` on the disk.

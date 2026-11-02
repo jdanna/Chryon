@@ -42,12 +42,11 @@ export default function EmulatorTab({ settings, onSettings, log, setStatus }: Pr
     refresh()
   }, [refresh])
 
-  // The user installs TAP-Windows outside the app, then comes back
+  // TAP-Windows and the network scripts can both be run outside the app
   useEffect(() => {
-    if (!status?.tapMissing) return
     window.addEventListener('focus', refresh)
     return () => window.removeEventListener('focus', refresh)
-  }, [status?.tapMissing, refresh])
+  }, [refresh])
 
   useEffect(
     () =>

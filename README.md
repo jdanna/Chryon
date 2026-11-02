@@ -1,8 +1,6 @@
 # MAXINE! Studio
 
-A desktop app that converts fonts for the Chyron MAXINE! and other iNFiNiT! series character generators.
-On Mac and Linux, it also emulates the whole machine, so you can run the real MAXINE! software without the
-hardware.
+A desktop app that converts fonts for the Chyron MAXINE! and other iNFiNiT! series character generators, and a full emulator of the machine.
 
 ![Comic Sans on a Sony CRT, with the MAXINE! control screen beside it](docs/maxine-crt.jpg)
 

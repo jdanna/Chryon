@@ -1,6 +1,6 @@
 # MAXINE! Studio
 
-A desktop app that converts fonts for the Chyron MAXINE! and other Infinit! series character generators.
+A desktop app that converts fonts for the Chyron MAXINE! and other iNFiNiT! series character generators.
 
 ![Comic Sans on a Sony CRT, with the MAXINE! control screen beside it](docs/maxine-crt.jpg)
 

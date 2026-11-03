@@ -28,8 +28,9 @@
     in bits 15..8, then (32 - length) << 3 | type. Type 0 skips, 1 and 2 draw,
     3 ends the row. The layer picks the palette entry within the bank: 1 is
     the 75% colour for the face, 2 the 50% one for the edge. The intensity is
-    the key. Layer $8002 is an edge value for the pixel under the next record,
-    without moving on.
+    the key. A layer with bit 15 set is a value for the pixel under the next
+    record, without moving on: $8002 is the edge, and a texture's shading puts
+    a second ramp entry there too, blending with the face's.
 
     With control bit 4 clear, each word is one pixel instead: $KKBBGGRR, the
     key and a full colour that bypasses the palette, already multiplied by the
@@ -50,7 +51,7 @@ DEFINE_DEVICE_TYPE(CHYRON_FB, chyron_fb_device, "chyron_fb", "Chyron Frame Buffe
 
 chyron_fb_device::chyron_fb_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
 	: device_t(mconfig, CHYRON_FB, tag, owner, clock)
-	, m_x(0), m_y(0), m_start_x(0), m_under(0), m_copy_row(0)
+	, m_x(0), m_y(0), m_start_x(0), m_under(0), m_under_index(0), m_blend(0), m_blend_index(0), m_copy_row(0)
 {
 }
 
@@ -65,6 +66,9 @@ void chyron_fb_device::device_start()
 	save_item(NAME(m_y));
 	save_item(NAME(m_start_x));
 	save_item(NAME(m_under));
+	save_item(NAME(m_under_index));
+	save_item(NAME(m_blend));
+	save_item(NAME(m_blend_index));
 	save_item(NAME(m_copy_row));
 }
 
@@ -127,13 +131,16 @@ void chyron_fb_device::put(uint32_t data)
 		m_x += length;
 		return;
 	}
-	if (layer == 0x8002)
+	unsigned const color = m_regs[REG_COLOR] << 5;
+	if (layer & 0x8000)
 	{
-		m_under = intensity;
+		// A texture's shading stacks a ramp entry on the edge, so the first is underneath and the next above it
+		bool const first = !m_under;
+		(first ? m_under : m_blend) = intensity;
+		(first ? m_under_index : m_blend_index) = color | (layer & 0x1f);
 		return;
 	}
 
-	unsigned const color = m_regs[REG_COLOR] << 5;
 	pixel *const dest = row(m_y);
 	for (unsigned i = 0; i < length; i++)
 	{
@@ -145,15 +152,18 @@ void chyron_fb_device::put(uint32_t data)
 			p.index = intensity;
 			p.key = intensity ? 0xff : 0;
 			p.under = 0;
+			p.blend = 0;
 		}
 		else
 		{
 			p.index = color | (layer & 0x1f);
 			p.key = intensity;
 			p.under = m_under;
-			p.under_index = color | 2;
+			p.under_index = m_under_index;
+			p.blend = m_blend;
+			p.blend_index = m_blend_index;
 		}
-		m_under = 0;
+		m_under = m_blend = 0;
 	}
 	m_x += length;
 }
@@ -170,6 +180,7 @@ void chyron_fb_device::put_pixel(uint32_t data)
 	p.key = (merge ? p.key : 0) | (data >> 24);
 	p.direct = 1;
 	p.under = 0;
+	p.blend = 0;
 }
 
 // In the form put_pixel takes, because the driver writes these straight back to the other bank
@@ -239,6 +250,11 @@ void chyron_fb_device::output_pixel(pixel const &p, uint32_t &video, uint8_t &ke
 	unsigned k = p.under;
 	if (p.under)
 		out = mix(0, palette(p.under_index), p.under);
+	if (p.blend)
+	{
+		out = mix(out, palette(p.blend_index), p.blend);
+		k = 255 - (255 - k) * (255 - p.blend) / 255;
+	}
 	if (p.key)
 	{
 		out = p.direct ? p.color + mix(out, 0, p.key) : mix(out, palette(p.index), p.key);
@@ -274,6 +290,7 @@ void chyron_fb_device::write_video_input(bitmap_rgb32 const &picture, bool keyed
 				p.key = keyed ? 0xff : 0;
 				p.direct = 1;
 				p.under = 0;
+				p.blend = 0;
 			}
 		}
 	}

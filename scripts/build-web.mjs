@@ -49,4 +49,7 @@ writeFileSync(
   join(OUT, 'manifest.json'),
   JSON.stringify({ image: createHash('sha256').update(disk).digest('hex').slice(0, 16), disk: 'disk.chd.gz', wasm: 'maxine.wasm.gz', files: Object.keys(FILES) }, null, 2)
 )
+// Cloudflare Pages lets browsers keep files for hours by default, which can pair a new page with an old emulator.
+// No-cache makes them check each time, and an unchanged file comes back as a quick 304.
+writeFileSync(join(SITE, '_headers'), '/emulator/*\n  Cache-Control: no-cache\n')
 console.log(`dist-web is ready, with ${image}`)

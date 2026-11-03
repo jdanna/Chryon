@@ -1,5 +1,6 @@
 ## 1.6.1
 - Added uploading a frame to feed the MAXINE!'s video input
+- Fixed font conversion with texture
 
 ## 1.6.0
 

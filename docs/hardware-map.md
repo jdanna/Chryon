@@ -149,7 +149,9 @@ IDT7201 FIFOs (p5), palette 2K×25 (p6), VRAM (p13–17).
 
 **The data port takes font records.** A run record is exactly one word of a font file: layer in the
 top 16 bits, intensity in 15..8, `(32 − length) << 3 | type`. The layer picks the palette entry (1 face,
-2 edge) and the intensity is the key. `FB_DUAL` copies glyph data straight to the port, re-sending
+2 edge) and the intensity is the key. A layer with bit 15 set goes under the next record without moving on. Font
+files only use `$8002`, the edge, but Texture Map's shading (CNVRT, T) stacks up to two, the edge and then a ramp
+entry, under a face record on the next ramp entry, such as `$8002`, `$800e`, `$000f`, which blends the shade. `FB_DUAL` copies glyph data straight to the port, re-sending
 control every 8 words. Fills write one row, then in row mode: `3` latches the addressed row and each
 later record copies it to `length` rows.
 

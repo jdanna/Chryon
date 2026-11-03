@@ -68,9 +68,10 @@ class Volume:
         mode = struct.unpack(">H", fd[:2])[0]
         count = struct.unpack(">H", fd[0xe:0x10])[0]
         size = struct.unpack(">I", fd[0x10:0x14])[0]
-        if count > 1:
-            raise NotImplementedError(f"file {fn} has {count} extents; only single-extent files have been seen")
-        extents = [struct.unpack(">II", fd[0x14:0x1c])] if count else []
+        # Extents follow one another, start block then length. A file the firmware grew in pieces has several.
+        if 0x14 + 8 * count > 0x70:
+            raise NotImplementedError(f"file {fn} has {count} extents, more than its descriptor holds")
+        extents = [struct.unpack(">II", fd[0x14 + 8 * i:0x1c + 8 * i]) for i in range(count)]
         return Entry(name, fn, mode, size, extents)
 
     def read(self, entry):

@@ -69,13 +69,15 @@ private:
 	static constexpr uint32_t CONTROL_GRAPHICS = 0x400; // set except while Message Compose's Video Input menu is open
 	static constexpr uint32_t CONTROL_MERGE = 0x02000000; // a pixel word merges into the pixel
 
-	// A pixel: palette address and key, and the same for an edge underneath
+	// A pixel: palette address and key, and up to two layers underneath, the lowest first
 	struct pixel
 	{
 		uint8_t index;
 		uint8_t key;
 		uint8_t under;
 		uint8_t under_index;
+		uint8_t blend;
+		uint8_t blend_index;
 		uint8_t direct; // use color, already multiplied by key, not the palette
 		uint32_t color;
 	};
@@ -94,7 +96,7 @@ private:
 	std::unique_ptr<pixel[]> m_vram;
 	uint32_t m_regs[0x40000];
 	unsigned m_x, m_y, m_start_x;
-	unsigned m_under, m_copy_row;
+	unsigned m_under, m_under_index, m_blend, m_blend_index, m_copy_row;
 	uint32_t const *m_levels = nullptr;
 	uint32_t const *m_level_control = nullptr;
 	bitmap_rgb32 const *m_video_input = nullptr;

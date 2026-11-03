@@ -185,6 +185,8 @@ whose production branch is `main`, which serves maxine.retrograde.tools. Cloudfl
 site, because they have no Emscripten and stop at 20 minutes.
 
 The startup page shows the release notes from `src/web/CHANGELOG.md`, so add an entry there with each web release.
+The build writes a `_headers` file that tells browsers not to cache `emulator/`, so a new page never runs with an old
+emulator. Unchanged files still come back as a quick 304.
 
 It has the screens, panel, keyboard, mouse, paste, video input and PNG export, which downloads the pair. It has no network, telnet or
 capture. The machine only runs while its tab is showing, because browsers stop drawing hidden tabs.

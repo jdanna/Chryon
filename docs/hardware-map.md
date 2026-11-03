@@ -314,6 +314,16 @@ The emulator has no direct read of the position, so `update_mouse()` counts its 
 the mailbox only for a cursor blit followed by the clock's, and otherwise re-syncs by pushing the cursor
 into the top left limit, which gives a known position.
 
+**Image Tools' crosshair.** Paint and Palette (CNTL G, then F2 or F1) take the mouse off Prompts and draw a crosshair in
+the overlay, so it shows on Color Edit: a bar two rows tall with a 1-pixel gap at its centre column, 5 pixels left of the
+gap in Paint and 6 in Palette, 6 to the right, and a 1-pixel arm above and below the gap, 4 or 5 rows each way. Mouse
+deltas move it 1:1 in overlay pixels, packets of 120 included. The gap column runs from 8 to 727 and the bar's top row
+from 1 to 486, in both tools. Paint's X and Y readouts are the gap column − 8 and the top row + 22, so they're frame
+buffer coordinates if the overlay's column offset is 8, not the 10 the emulator uses. Right click leaves Paint, erases
+the crosshair and brings the arrow back on Prompts. Outlines (F4) keeps the arrow in its menu, and how it reaches a
+crosshair hasn't been found. Nothing else in the overlay has two rows of 5 lit, 1 clear and 6 lit, so the emulator
+looks for that each field rather than tracking the firmware's state, which also gives it the crosshair's real position.
+
 In Message Compose, CURSOR L moves one character and typing overstrikes. SHIFT ROW R (`$81`) moves the
 current row 1 pixel right, locked or unlocked. ERASE clears the whole message.
 

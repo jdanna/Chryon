@@ -234,7 +234,9 @@ export default function EmulatorTab({ settings, onSettings, log: appLog, setStat
                       : 'Asks for your password. Lasts until you restart your computer.'}
             </div>
           </div>
+        </section>
 
+        <section className={styles.column}>
           <div className={ui.sectionHeader}>Disk</div>
           <div className={styles.block}>
             <div className={styles.path}>
@@ -371,35 +373,35 @@ export default function EmulatorTab({ settings, onSettings, log: appLog, setStat
         </section>
 
         <NvramPanel config={settings} running={running} log={log} />
-
-        <section className={styles.output}>
-          <div className={ui.sectionHeader}>
-            Emulator log
-            <span className={ui.spacer} />
-            <button className={ui.btnSmall} disabled={lines.length === 0} onClick={() => setLines([])}>
-              Clear
-            </button>
-          </div>
-          <div
-            className={styles.logBody}
-            ref={output}
-            onScroll={(e) => {
-              const el = e.currentTarget
-              followOutput.current = el.scrollHeight - el.scrollTop - el.clientHeight < BOTTOM_SLACK_PX
-            }}
-          >
-            {lines.length === 0 ? (
-              <div className={ui.empty}>The emulator and firmware log here while it runs.</div>
-            ) : (
-              lines.map((line, i) => (
-                <div key={i} className={styles.logLine}>
-                  {line}
-                </div>
-              ))
-            )}
-          </div>
-        </section>
       </div>
+
+      <section className={styles.output}>
+        <div className={ui.sectionHeader}>
+          Emulator log
+          <span className={ui.spacer} />
+          <button className={ui.btnSmall} disabled={lines.length === 0} onClick={() => setLines([])}>
+            Clear
+          </button>
+        </div>
+        <div
+          className={styles.logBody}
+          ref={output}
+          onScroll={(e) => {
+            const el = e.currentTarget
+            followOutput.current = el.scrollHeight - el.scrollTop - el.clientHeight < BOTTOM_SLACK_PX
+          }}
+        >
+          {lines.length === 0 ? (
+            <div className={ui.empty}>The emulator and firmware log here while it runs.</div>
+          ) : (
+            lines.map((line, i) => (
+              <div key={i} className={styles.logLine}>
+                {line}
+              </div>
+            ))
+          )}
+        </div>
+      </section>
     </div>
   )
 }

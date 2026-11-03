@@ -234,6 +234,16 @@ static constexpr int TABLET_CLICK_FIELDS = 12;
 
 static constexpr int CURSOR_HOME_MOVES = 5; // of -127, enough to reach the top left from anywhere
 
+// Image Tools' Paint and Palette swap the arrow for a crosshair in the overlay, on Color Edit. It's a
+// bar two rows tall with a gap at its centre column, 5 or 6 pixels each side, and a 1-pixel arm above
+// and below the gap. Mouse deltas move it 1:1 in overlay pixels, and these are the limits of the gap
+// column and the bar's top row. Firmware redraws can hide it for a moment, hence the grace fields.
+static constexpr int CROSSHAIR_LEFT = 8;
+static constexpr int CROSSHAIR_RIGHT = 727;
+static constexpr int CROSSHAIR_TOP = 1;
+static constexpr int CROSSHAIR_BOTTOM = 486;
+static constexpr int CROSSHAIR_GONE_FIELDS = 4;
+
 // From the SDL build in emulator/build.sh
 #if defined(__EMSCRIPTEN__)
 extern "C" bool SDL_ShowCursor();
@@ -392,7 +402,11 @@ private:
 	void update_tablet();
 	void mouse_move(int dx, int dy, int buttons);
 	void pointer_w(uint32_t data);
+	void set_pointer_active();
 	void update_cursor_position();
+	bool find_crosshair(int &x, int &y) const;
+	void update_crosshair();
+	void move_mouse_to(int &from_x, int &from_y, int x, int y);
 	void update_mouse();
 	int active_shift() const;
 	void panel_key(uint16_t code);
@@ -484,6 +498,7 @@ private:
 	int m_mouse_bit = -1;
 	uint8_t m_mouse_last_buttons = 0;
 	bool m_pointer_active = false;
+	bool m_pointer_present = false;
 	bool m_pointer_edit = false;
 	int m_pointer_x = 0;
 	int m_pointer_y = 0;
@@ -495,6 +510,10 @@ private:
 	int m_cursor_settle = 0;
 	int m_cursor_idle = 0;
 	int m_cursor_home = 0;
+	bool m_crosshair = false;
+	int m_crosshair_gone = 0;
+	int m_crosshair_x = 0; // where the moves sent so far put it, in overlay pixels
+	int m_crosshair_y = 0;
 	bool m_host_focus = false;
 	std::deque<uint8_t> m_paste_queue;
 	bool m_paste_held = false;
@@ -1169,29 +1188,32 @@ void maxine_state::panel_key(uint16_t code)
 }
 
 // From the layout script: x << 16 | buttons << 12 | y in Prompts pixels, with bit 30 set and raster
-// pixels instead over Color Edit, or all ones elsewhere. Over Prompts, or either screen with the
-// tablet, the host's pointer gives way to the firmware's. Buttons: bit 0 left, bit 1 right.
+// pixels instead over Color Edit, or all ones elsewhere. Buttons: bit 0 left, bit 1 right.
 void maxine_state::pointer_w(uint32_t data)
 {
+	m_pointer_present = data != 0xffffffff;
 	m_pointer_edit = BIT(data, 30);
-	bool const active = data != 0xffffffff && (m_tablet_mode || !m_pointer_edit);
-	if (active != m_pointer_active)
-#if defined(__EMSCRIPTEN__)
-		active ? SDL_HideCursor() : SDL_ShowCursor();
-#else
-		SDL_ShowCursor(active ? 0 : 1);
-#endif
-	if (active && !m_pointer_active)
-		m_cursor_home = CURSOR_HOME_MOVES;
+	m_pointer_x = BIT(data, 16, 14);
+	m_pointer_y = data & 0xfff;
+	m_pointer_buttons = BIT(data, 12, 2);
+	set_pointer_active();
+}
 
+// The host's pointer gives way to the firmware's over the screen that has it: Prompts for the arrow,
+// Color Edit for the crosshair, and either one with the tablet. Elsewhere it's left alone.
+void maxine_state::set_pointer_active()
+{
+	bool const active = m_pointer_present && (m_tablet_mode || m_pointer_edit == m_crosshair);
+	if (active == m_pointer_active)
+		return;
+#if defined(__EMSCRIPTEN__)
+	active ? SDL_HideCursor() : SDL_ShowCursor();
+#else
+	SDL_ShowCursor(active ? 0 : 1);
+#endif
+	if (active && !m_crosshair)
+		m_cursor_home = CURSOR_HOME_MOVES;
 	m_pointer_active = active;
-	m_pointer_buttons = 0;
-	if (m_pointer_active)
-	{
-		m_pointer_x = BIT(data, 16, 14);
-		m_pointer_y = data & 0xfff;
-		m_pointer_buttons = BIT(data, 12, 2);
-	}
 }
 
 // The driver only knows the firmware's cursor by counting what it sent, which fails when a program
@@ -1254,16 +1276,98 @@ void maxine_state::update_tablet()
 	}
 }
 
+// The crosshair's gap column and the bar's top row, the position the firmware reports, or false if
+// the overlay hasn't got one. Nothing else in the overlay has two rows of 5 pixels, a gap and 6.
+bool maxine_state::find_crosshair(int &x, int &y) const
+{
+	auto const lit = [this] (int px, int row) { return BIT(m_vram[row * VRAM_ROW_WORDS + px / 4], (px & 3) * 4); };
+	auto const bar = [&lit] (int c, int row)
+	{
+		for (int i = 1; i <= 6; i++)
+			if ((i <= 5 && !lit(c - i, row)) || !lit(c + i, row))
+				return false;
+		return !lit(c, row);
+	};
+
+	for (int row = 1; row < int(PROMPT_ROWS) - 2; row++)
+	{
+		uint16_t const *const words = &m_vram[row * VRAM_ROW_WORDS];
+		for (int word = 0; word < int(VRAM_ROW_WORDS) - 3; word++) // the bar's start, so c + 6 stays in the row
+		{
+			if (!(words[word] & 0x1111))
+				continue;
+			for (int px = word * 4; px < word * 4 + 4; px++)
+			{
+				int const c = px + 5;
+				if (lit(px, row) && bar(c, row) && bar(c, row + 1) && (lit(c, row - 1) || lit(c, row + 2)))
+				{
+					x = c;
+					y = row;
+					return true;
+				}
+			}
+		}
+	}
+	return false;
+}
+
+// Follows the crosshair. Moves already sent are trusted over the overlay, which lags them, until
+// the mouse has been still for a while.
+void maxine_state::update_crosshair()
+{
+	int x, y;
+	if (!find_crosshair(x, y))
+	{
+		if (m_crosshair && ++m_crosshair_gone >= CROSSHAIR_GONE_FIELDS)
+		{
+			m_crosshair = false;
+			m_cursor_home = CURSOR_HOME_MOVES; // the arrow comes back wherever the firmware left it
+		}
+		return;
+	}
+
+	m_crosshair_gone = 0;
+	if (!m_crosshair || m_cursor_idle >= CURSOR_IDLE_FIELDS)
+	{
+		m_crosshair_x = x;
+		m_crosshair_y = y;
+	}
+	m_crosshair = true;
+}
+
+// One mouse packet from the firmware's position towards x, y, which tracks what was sent. The
+// buttons only change once the pointer has arrived, so a click lands where it was aimed.
+void maxine_state::move_mouse_to(int &from_x, int &from_y, int x, int y)
+{
+	int const dx = m_pointer_active ? std::clamp(x - from_x, -120, 120) : 0;
+	int const dy = m_pointer_active ? std::clamp(y - from_y, -120, 120) : 0;
+	int const buttons = (dx || dy) ? m_mouse_last_buttons : (m_pointer_active ? m_pointer_buttons : 0);
+	if (dx || dy || buttons != m_mouse_last_buttons)
+	{
+		mouse_move(dx, dy, buttons);
+		from_x += dx;
+		from_y += dy;
+		m_mouse_last_buttons = buttons;
+		m_cursor_settle = 2;
+		m_cursor_idle = 0;
+	}
+}
+
 void maxine_state::update_mouse()
 {
 	if (m_tablet_mode)
 	{
+		m_crosshair = false;
+		set_pointer_active();
 		update_tablet();
 		return;
 	}
 
 	m_cursor_idle++;
-	update_cursor_position();
+	update_crosshair();
+	set_pointer_active();
+	if (!m_crosshair)
+		update_cursor_position();
 
 	if (m_cursor_settle)
 	{
@@ -1272,6 +1376,14 @@ void maxine_state::update_mouse()
 	}
 	if (!m_mouse_queue.empty())
 		return;
+
+	if (m_crosshair)
+	{
+		move_mouse_to(m_crosshair_x, m_crosshair_y,
+				std::clamp(m_pointer_x + OVERLAY_COLUMN_OFFSET, CROSSHAIR_LEFT, CROSSHAIR_RIGHT),
+				std::clamp(m_pointer_y + OVERLAY_ROW_OFFSET, CROSSHAIR_TOP, CROSSHAIR_BOTTOM));
+		return;
+	}
 
 	// Pushing the cursor into its top left stop puts it at a known position
 	if (m_pointer_active && m_cursor_home)
@@ -1286,20 +1398,9 @@ void maxine_state::update_mouse()
 		return;
 	}
 
-	int const x = std::clamp(m_pointer_x + CURSOR_TIP_X, CURSOR_LEFT, CURSOR_RIGHT);
-	int const y = std::clamp(m_pointer_y + CURSOR_TIP_Y, CURSOR_TOP, CURSOR_BOTTOM);
-	int const dx = m_pointer_active ? std::clamp(x - m_cursor_x, -120, 120) : 0;
-	int const dy = m_pointer_active ? std::clamp(y - m_cursor_y, -120, 120) : 0;
-	int const buttons = (dx || dy) ? m_mouse_last_buttons : m_pointer_buttons; // click on arrival
-	if (dx || dy || buttons != m_mouse_last_buttons)
-	{
-		mouse_move(dx, dy, buttons);
-		m_cursor_x += dx;
-		m_cursor_y += dy;
-		m_mouse_last_buttons = buttons;
-		m_cursor_settle = 2;
-		m_cursor_idle = 0;
-	}
+	move_mouse_to(m_cursor_x, m_cursor_y,
+			std::clamp(m_pointer_x + CURSOR_TIP_X, CURSOR_LEFT, CURSOR_RIGHT),
+			std::clamp(m_pointer_y + CURSOR_TIP_Y, CURSOR_TOP, CURSOR_BOTTOM));
 }
 
 // Microsoft serial mouse on DUART channel B: 1200 baud 7N1, three bytes per report, with bit 6

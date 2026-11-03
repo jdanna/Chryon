@@ -79,6 +79,10 @@ Command-V pastes the clipboard as plain ASCII. On Windows, it's Right Alt+V, bec
 The mouse isn't captured. Over Prompts, the firmware's arrow follows your pointer and the buttons click
 there. It re-syncs when the pointer re-enters Prompts or the app regains focus.
 
+Image Tools' Paint and Palette (CNTL G, then F2 or F1) replace the arrow with a crosshair on Color Edit. While it's
+there, it follows your pointer over Color Edit instead, and Prompts is left alone. Left click or drag to paint or pick,
+and right click to go back to the arrow.
+
 ### Tablet
 
 A new machine is set up for the WACOM SD510C. If you've changed it, choose it again under Tablet Type in the

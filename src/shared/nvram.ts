@@ -29,9 +29,7 @@ const serial = (prefix: string, group: string, offset: number): NvramField[] => 
 
 export const NVRAM_FIELDS: NvramField[] = [
   { id: 'ether', group: 'Network', label: 'Ethernet', offset: 0x779, kind: 'hex', length: 3, hint: 'Follows 08:00:3e. IP addresses are kept on the disk, so set those in Setup\'s Network screen.' },
-  { id: 'telnet-no-login', group: 'Network', label: 'Tel No Login', offset: 0x268, kind: 'flag', hint: 'Skips the telnet login' },
   ...serial('tablet', 'Tablet port', 0x218),
-  ...serial('ii', 'Intelligent Interface port', 0x21c),
   { id: 'debug', group: 'Boot', label: 'Debug mode', offset: 0x302, kind: 'byte', hint: 'Also picks the memory size: 0 or 2 selects 4, others 3' }
 ]
 

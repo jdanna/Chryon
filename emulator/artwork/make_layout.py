@@ -190,7 +190,7 @@ def layout():
     return '\n'.join(out) + '\n'
 
 
-# The host pointer drives the firmware's arrow over Prompts, or the tablet over Color Edit. Coordinates
+# The host pointer drives the firmware's arrow over Prompts, or its crosshair or the tablet over Color Edit. Coordinates
 # over Prompts are its visible area in maxine.cpp, and over Color Edit are raster pixels with bit 30 set.
 SCRIPT = '''<script><![CDATA[
 local LEFT, TOP, WIDTH, HEIGHT = 92, 20, 520, 452

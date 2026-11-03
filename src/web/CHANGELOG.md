@@ -1,3 +1,7 @@
+## 1.6.3
+- Fixed a picture recalled from Image Tools vanishing when you start typing over it
+- The crosshair in Image Tools' Paint and Palette follows your pointer over Color Edit
+
 ## 1.6.2
 - Fixed Image Tools' Zoom / Pan, which scaled vertically only
 

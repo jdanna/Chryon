@@ -357,8 +357,9 @@ npm run dist:mac | dist:win | dist:linux | release     # unsigned installers
   before `machine_reset` and it could be a VPN's adapter. Never rename an existing adapter or run `tapinstall remove`.
   A TAP adapter with no client is disconnected, so Node doesn't list it and it has no active address, and status is whether
   `netsh interface show interface` lists it.
-- `shared/nvram.ts` lists the only NVRAM fields the editor shows, as the user chose on 2026-11-02: both serial records,
-  Tel No Login, Ethernet and Debug mode. The rest stay at their defaults. Leave out anything the firmware overwrites at
+- `shared/nvram.ts` lists the only NVRAM fields the editor shows, as the user chose on 2026-11-03: Ethernet, the tablet
+  port's serial record and Debug mode. The tab's columns are Emulator and Network, Disk, Video input and Capture, then
+  NVRAM, with the log across the bottom. The rest stay at their defaults. Leave out anything the firmware overwrites at
   boot: `$76c`, `$774` and `$77c`–`$78f` come from `NET_CONF` on the disk.
 - Packaging: `scripts/vendor-emulator.mjs` fills gitignored `resources/emulator/<platform>-<arch>/`, which
   electron-builder copies to `resources/emulator`. Linux builds in Docker on Ubuntu 22.04 in `emulator/mame-linux-x64`,
@@ -439,7 +440,8 @@ python3 tools/phile.py ls emulator/roms/maxine-v11.01.img /SYSTEM/PROGRAMS
   needs `field:set_input_seq` to exercise the host path.
 - The mouse isn't captured: the layout script writes the host pointer to a test port and
   `update_mouse()` steers the firmware's cursor to it with serial mouse packets. See "Mouse cursor" in
-  `docs/hardware-map.md` for how it stays lined up.
+  `docs/hardware-map.md` for how it stays lined up. Image Tools' Paint and Palette swap the arrow for a crosshair on
+  Color Edit, which `find_crosshair()` spots in the overlay each field, so the pointer drives it over Color Edit instead.
 - The Video Input board at `$81300000` takes a picture from the app (`videoin <PNG path>` or `videoin off` on stdin)
   or the web page (`maxine_video_input`, a PNG in MEMFS), and writes it into the frame buffer while the firmware
   holds control bits 10 and 6 clear. Control bit 1 (ALT V, or leaving the menu live) composites it behind the

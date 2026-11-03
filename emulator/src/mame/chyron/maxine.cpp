@@ -67,6 +67,7 @@
 
 #include "chyronfb.h"
 #if !defined(__EMSCRIPTEN__)
+#include "decklinkout.h"
 #include "fieldcapture.h"
 #endif
 #include "maxine_keys.h"
@@ -149,8 +150,14 @@ static std::atomic<int> s_capture_command{0};
 static std::mutex s_video_input_lock;
 static std::optional<std::string> s_video_input_path;
 
-// MAXINE! Studio's commands, a line at a time: "capture <port>", "capture stop", "videoin <PNG path>" and
-// "videoin off". The low-level read
+// A DeckLink to play out of by its display name, or an empty name for none, until the machine takes it
+static std::mutex s_decklink_lock;
+static std::optional<std::string> s_decklink_name;
+static std::string s_decklink_playing; // so a hard reset, which makes a new driver, opens it again
+static std::atomic<bool> s_decklink_list{false};
+
+// MAXINE! Studio's commands, a line at a time: "capture <port>", "capture stop", "videoin <PNG path>",
+// "videoin off", "decklink list", "decklink <display name>" and "decklink off". The low-level read
 // matters: getchar() would hold a stream lock that exit() needs. Node can only terminate a process on
 // Windows, which loses the NVRAM, so the app closes stdin there to quit. Elsewhere it sends SIGTERM, and
 // closing means the app has gone, which shouldn't lose the machine.
@@ -177,6 +184,13 @@ static void read_commands()
 		{
 			std::lock_guard const lock(s_video_input_lock);
 			s_video_input_path = (line == "videoin off") ? std::string() : line.substr(8);
+		}
+		else if (line == "decklink list")
+			s_decklink_list = true;
+		else if (line.rfind("decklink ", 0) == 0)
+		{
+			std::lock_guard const lock(s_decklink_lock);
+			s_decklink_name = (line == "decklink off") ? std::string() : line.substr(9);
 		}
 		line.clear();
 	}
@@ -407,7 +421,11 @@ private:
 	void poll_host();
 #if !defined(__EMSCRIPTEN__)
 	void end_capture();
+	void open_decklink(std::string const &name);
+	void list_decklinks();
+	void decklink_field();
 #endif
+	void overlay_row(int y, uint32_t *dest, int min_x, int max_x) const;
 	void tablet_frame(int x, int y, int buttons);
 	void update_tablet();
 	void tablet_pen_out();
@@ -538,6 +556,11 @@ private:
 #if !defined(__EMSCRIPTEN__)
 	std::unique_ptr<field_capture> m_capture;
 	uint32_t *m_capture_frame = nullptr; // set between a frame's two fields
+	std::unique_ptr<decklink_output> m_decklink;
+	uint8_t *m_decklink_frame = nullptr; // set between a frame's two fields
+	int m_decklink_source = SHOW_COLOR_EDIT; // what the frame being filled shows
+	std::unique_ptr<uint32_t[]> m_decklink_rows; // a frame of $KKRRGGBB to convert from
+	int m_second_screen_told = -1; // the app has heard about this one
 #endif
 	uint32_t m_panel_last[3]{};
 	bitmap_rgb32 m_video_input; // what the Video Input board sees
@@ -732,20 +755,23 @@ uint32_t maxine_state::edit_update(screen_device &screen, bitmap_rgb32 &bitmap, 
 		return 0;
 
 	for (int y = cliprect.min_y; y <= cliprect.max_y; y++)
-	{
-		int const row = y + OVERLAY_ROW_OFFSET;
-		if (row < 0)
-			continue;
-		uint16_t const *const src = &m_vram[row * VRAM_ROW_WORDS];
-		uint32_t *const dest = &bitmap.pix(y);
-		for (int x = cliprect.min_x; x <= cliprect.max_x; x++)
-		{
-			int const column = x + OVERLAY_COLUMN_OFFSET;
-			if (BIT(src[column / 4], (column & 3) * 4))
-				dest[x] = 0xffffff;
-		}
-	}
+		overlay_row(y, &bitmap.pix(y), cliprect.min_x, cliprect.max_x);
 	return 0;
+}
+
+// The 34010's overlay on one line of Color Edit, in white
+void maxine_state::overlay_row(int y, uint32_t *dest, int min_x, int max_x) const
+{
+	int const row = y + OVERLAY_ROW_OFFSET;
+	if (row < 0)
+		return;
+	uint16_t const *const src = &m_vram[row * VRAM_ROW_WORDS];
+	for (int x = min_x; x <= max_x; x++)
+	{
+		int const column = x + OVERLAY_COLUMN_OFFSET;
+		if (BIT(src[column / 4], (column & 3) * 4))
+			dest[x] = 0xffffff;
+	}
 }
 
 void maxine_state::poll_host()
@@ -767,6 +793,16 @@ void maxine_state::poll_host()
 	}
 	if (video_input)
 		load_video_input(*video_input);
+
+	if (s_decklink_list.exchange(false))
+		list_decklinks();
+	std::optional<std::string> decklink;
+	{
+		std::lock_guard const lock(s_decklink_lock);
+		decklink.swap(s_decklink_name);
+	}
+	if (decklink)
+		open_decklink(*decklink);
 #else
 	if (s_page_video_input)
 	{
@@ -870,6 +906,8 @@ void maxine_state::end_capture()
 // 486-line frame's first line belongs to the later field, so a frame starts on the odd rows.
 TIMER_CALLBACK_MEMBER(maxine_state::capture_field)
 {
+	decklink_field();
+
 	if (!m_capture)
 		return;
 	if (m_capture->failed())
@@ -891,6 +929,81 @@ TIMER_CALLBACK_MEMBER(maxine_state::capture_field)
 	}
 }
 
+// The app reads these lines from stdout
+void maxine_state::list_decklinks()
+{
+	logerror("%s", decklink_output::report());
+}
+
+// An empty name closes the output, and the device goes back to its own idle picture
+void maxine_state::open_decklink(std::string const &name)
+{
+	m_decklink_frame = nullptr;
+	if (m_decklink)
+	{
+		unsigned const repeats = m_decklink->repeats();
+		m_decklink.reset();
+		logerror("DeckLink: closed, %u frames repeated\n", repeats);
+	}
+	s_decklink_playing.clear();
+	if (name.empty())
+	{
+		logerror("MAXINE_DECKLINK_OFF\n");
+		return;
+	}
+
+	auto output = std::make_unique<decklink_output>(name);
+	if (!output->error().empty())
+	{
+		logerror("MAXINE_DECKLINK_ERROR %s\n", output->error());
+		return;
+	}
+	if (!m_decklink_rows)
+		m_decklink_rows = std::make_unique<uint32_t[]>(decklink_output::WIDTH * decklink_output::HEIGHT);
+	m_decklink = std::move(output);
+	s_decklink_playing = name;
+	logerror("MAXINE_DECKLINK_ON %s\n", name);
+}
+
+// The DeckLink plays whichever output the SECOND SCREEN key shows, a whole frame at a time, so a press
+// never splits one between two outputs. Fields are taken as the capture's are.
+void maxine_state::decklink_field()
+{
+	if (!m_decklink)
+		return;
+
+	if (m_lower_field && !m_decklink_frame)
+	{
+		m_decklink_frame = m_decklink->next_frame();
+		if (!m_decklink_frame)
+		{
+			logerror("MAXINE_DECKLINK_ERROR The DeckLink stopped taking frames\n");
+			m_decklink.reset();
+			return;
+		}
+		m_decklink_source = m_second_screen;
+	}
+	if (!m_decklink_frame)
+		return;
+
+	constexpr unsigned WIDTH = decklink_output::WIDTH, HEIGHT = decklink_output::HEIGHT;
+	uint32_t *const rows = m_decklink_rows.get();
+	unsigned const first = m_lower_field ? 1 : 0;
+	m_fb->render_field(rows, first, WIDTH, HEIGHT, m_decklink_source != SHOW_COLOR_EDIT);
+	for (unsigned y = first; y < HEIGHT; y += 2)
+	{
+		uint32_t *const row = &rows[y * WIDTH];
+		if (m_decklink_source == SHOW_COLOR_EDIT)
+			overlay_row(y, row, 0, WIDTH - 1);
+		decklink_output::convert_row(row, m_decklink_frame + y * decklink_output::ROW_BYTES, m_decklink_source == SHOW_KEY);
+	}
+	if (!m_lower_field)
+	{
+		m_decklink->submit_frame();
+		m_decklink_frame = nullptr;
+	}
+}
+
 #endif // !__EMSCRIPTEN__
 
 // The field interrupt also tells the firmware the video standard: it counts these for a
@@ -908,7 +1021,7 @@ TIMER_CALLBACK_MEMBER(maxine_state::field_tick)
 	// some lines after this interrupt, by when the firmware's handler has run.
 	m_lower_field = !m_lower_field;
 #if !defined(__EMSCRIPTEN__)
-	if (m_capture)
+	if (m_capture || m_decklink)
 		m_capture_timer->adjust(attotime::from_ticks(FIRST_ACTIVE_LINE * RASTER_LINE_CLOCKS, 13'500'000));
 #endif
 
@@ -971,6 +1084,15 @@ TIMER_CALLBACK_MEMBER(maxine_state::field_tick)
 		m_shift_lamps[i] = (shift == i) ? 1 : 0;
 	m_shift_lamps[3] = m_pointer_mode; // the switch's label
 	m_second_screen_label = m_second_screen;
+#if !defined(__EMSCRIPTEN__)
+	// The app shows what the DeckLink is playing
+	if (m_second_screen != m_second_screen_told)
+	{
+		static char const *const NAMES[SHOW_COUNT] = { "color-edit", "video", "key" };
+		logerror("MAXINE_SECOND_SCREEN %s\n", NAMES[m_second_screen]);
+		m_second_screen_told = m_second_screen;
+	}
+#endif
 
 #if defined(__EMSCRIPTEN__)
 	if (!s_page_paste.empty())
@@ -1868,6 +1990,12 @@ void maxine_state::machine_start()
 		{
 			commands_started = true;
 			std::thread(read_commands).detach();
+		}
+		if (!s_decklink_playing.empty())
+		{
+			std::lock_guard const lock(s_decklink_lock);
+			if (!s_decklink_name)
+				s_decklink_name = s_decklink_playing;
 		}
 #endif
 		// field_tick stops while the machine is paused, and this doesn't

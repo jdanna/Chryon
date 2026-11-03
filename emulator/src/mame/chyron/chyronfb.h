@@ -26,7 +26,7 @@ public:
 	void render_key(bitmap_rgb32 &bitmap, rectangle const &cliprect) const;
 
 	// One field of both, every second line of a width x height frame of $KKRRGGBB
-	void render_field(uint32_t *frame, unsigned first_line, unsigned width, unsigned height) const;
+	void render_field(uint32_t *frame, unsigned first_line, unsigned width, unsigned height, bool faded = true) const;
 
 	// The Video Input board's picture, which it writes into the frame buffer while the control register is live
 	static constexpr int VIDEO_INPUT_WIDTH = 720;

@@ -5,7 +5,7 @@ import { chmod, copyFile, mkdir, open, readFile, rename, rm, stat, writeFile } f
 import { tmpdir } from 'os'
 import { basename, isAbsolute, join } from 'path'
 import { promisify } from 'util'
-import type { EmulatorConfig, EmulatorStatus, NvramFile } from '@shared/types'
+import type { DecklinkSource, DecklinkState, EmulatorConfig, EmulatorStatus, NvramFile } from '@shared/types'
 import { NVRAM_SIZE } from '@shared/nvram'
 import { Capture } from './capture'
 
@@ -25,6 +25,13 @@ const WINDOWS_ADAPTER = 'MAXINE Emulator'
 // and this suffix, so a line from the emulated machine can't name a file elsewhere.
 const EXPORT_LINE = /MAXINE_EXPORT (\d+(-640x480)?\.png)\s*$/
 const EXPORT_KINDS = ['video', 'key']
+// What the driver prints about the DeckLink, and which output SECOND SCREEN shows. logerror puts a tag
+// in front, so these aren't anchored at the start.
+const DECKLINK_LINE = /MAXINE_DECKLINK_(DEVICES|DEVICE|NODRIVER|ON|OFF|ERROR)(?: (.*))?$/
+const SECOND_SCREEN_LINE = /MAXINE_SECOND_SCREEN (color-edit|video|key)\s*$/
+const SOURCE_NAMES: Record<DecklinkSource, string> = { 'color-edit': 'Color Edit', video: 'Video', key: 'Key' }
+const decklinkIdle = (): DecklinkState => ({ driver: null, devices: [], active: null, source: 'color-edit', error: null })
+const DECKLINK_LIST_TIMEOUT_MS = 10000
 const VIDEO_INPUT_FILE = 'video-input.png'
 const PICTURE_EXTENSIONS = ['png', 'jpg', 'jpeg']
 const TAP_DOWNLOAD = 'https://build.openvpn.net/downloads/releases/tap-windows-9.24.7-I601-Win10.exe'
@@ -165,6 +172,8 @@ export class Emulator {
   private exportFolder: string | undefined
   private exports: Promise<void> = Promise.resolve()
   private capture: Capture | null = null
+  private decklink = decklinkIdle()
+  private listing: string[] = []
 
   constructor(private win: BrowserWindow) {}
 
@@ -210,11 +219,87 @@ export class Emulator {
     this.partial = lines.pop() ?? ''
     for (const line of lines) {
       const exported = EXPORT_LINE.exec(line)
+      const decklink = DECKLINK_LINE.exec(line.trimEnd())
+      const screen = SECOND_SCREEN_LINE.exec(line)
       if (exported) {
         const [, name, suffix = ''] = exported
         const snap = this.snapFolder
         this.exports = this.exports.then(() => this.saveExport(snap, name, `${suffix}.png`))
-      } else if (line.trim()) this.addLine(line.trimEnd())
+      } else if (decklink) this.decklinkLine(decklink[1], decklink[2] ?? '')
+      else if (screen) this.setDecklink({ source: screen[1] as DecklinkSource })
+      else if (line.trim()) this.addLine(line.trimEnd())
+    }
+  }
+
+  private setDecklink(change: Partial<DecklinkState>): void {
+    this.decklink = { ...this.decklink, ...change }
+    this.send('emulator:decklink', this.decklink)
+  }
+
+  /** A list comes as a line per device and then the count. */
+  private decklinkLine(kind: string, text: string): void {
+    switch (kind) {
+      case 'DEVICE':
+        this.listing.push(text)
+        break
+      case 'DEVICES':
+        this.setDecklink({ driver: true, devices: this.listing })
+        this.listing = []
+        break
+      case 'NODRIVER':
+        this.setDecklink({ driver: false, devices: [] })
+        break
+      case 'ON':
+        this.addLine(`DeckLink: playing ${SOURCE_NAMES[this.decklink.source]} on ${text}, NTSC 525i59.94. SECOND SCREEN picks what it plays.`)
+        this.setDecklink({ active: text, error: null })
+        break
+      case 'OFF':
+        this.addLine('DeckLink: stopped.')
+        this.setDecklink({ active: null, error: null })
+        break
+      case 'ERROR':
+        this.addLine(`DeckLink: ${text}`)
+        this.setDecklink({ active: null, error: text })
+        break
+    }
+  }
+
+  private command(line: string): void {
+    if (this.child?.stdin?.writable) this.child.stdin.write(`${line}\n`)
+  }
+
+  /** The emulator answers with the lines decklinkLine reads. */
+  setDecklinkDevice(cfg: EmulatorConfig): void {
+    const name = cfg.decklink.replace(/[\r\n]/g, '')
+    this.command(name ? `decklink ${name}` : 'decklink off')
+  }
+
+  /**
+   * The emulator holds the devices while it runs, so it's asked. Otherwise the binary starts with
+   * MAXINE_DECKLINK_LIST set, which prints the list and exits before MAME starts.
+   */
+  async refreshDecklinks(): Promise<void> {
+    if (this.child) {
+      this.command('decklink list')
+      return
+    }
+    const paths = layout()
+    if (!existsSync(paths.binary)) return
+    const libraryPath = [paths.lib, process.env['LD_LIBRARY_PATH']].filter(Boolean).join(':')
+    try {
+      const { stdout } = await run(paths.binary, [], {
+        env: { ...process.env, MAXINE_DECKLINK_LIST: '1', ...(paths.lib ? { LD_LIBRARY_PATH: libraryPath } : {}) },
+        timeout: DECKLINK_LIST_TIMEOUT_MS,
+        windowsHide: true
+      })
+      if (this.child) return // started meanwhile, and asks for itself
+      this.listing = []
+      for (const line of stdout.split('\n')) {
+        const decklink = DECKLINK_LINE.exec(line.trimEnd())
+        if (decklink) this.decklinkLine(decklink[1], decklink[2] ?? '')
+      }
+    } catch (err) {
+      this.addLine(`Couldn't look for DeckLink devices: ${(err as Error).message}`)
     }
   }
 
@@ -315,6 +400,8 @@ export class Emulator {
     this.child = child
     this.lastLine = ''
     this.partial = ''
+    this.listing = []
+    this.setDecklink({ active: null, source: 'color-edit', error: null })
 
     child.stdout!.setEncoding('utf8').on('data', (chunk: string) => this.receive(chunk))
     child.stderr!.setEncoding('utf8').on('data', (chunk: string) => this.receive(chunk))
@@ -325,6 +412,7 @@ export class Emulator {
         this.child = null
         void this.capture?.stop() // ffmpeg finishes the file from what arrived
         this.addLine(message)
+        this.setDecklink({ active: null, source: 'color-edit' })
         this.send('emulator:state', false)
         resolve()
       }
@@ -335,6 +423,8 @@ export class Emulator {
       })
     })
     this.send('emulator:state', true)
+    void this.refreshDecklinks()
+    if (cfg.decklink) this.setDecklinkDevice(cfg)
     if (cfg.videoInput) await this.setVideoInput(cfg).catch((err: Error) => this.addLine(`No video input: ${err.message}`))
   }
 
@@ -355,9 +445,7 @@ export class Emulator {
     if (!this.child) throw new Error('Run the emulator first.')
     this.capture ??= new Capture(
       layout().ffmpeg,
-      (line) => {
-        if (this.child?.stdin?.writable) this.child.stdin.write(`${line}\n`)
-      },
+      (line) => this.command(line),
       (line) => this.addLine(line),
       (state) => this.send('emulator:capture', state)
     )
@@ -430,6 +518,8 @@ export function registerEmulator(win: BrowserWindow): Emulator {
   ipcMain.handle('emulator:capture-start', (_, cfg: EmulatorConfig) => emulator.startCapture(cfg))
   ipcMain.handle('emulator:capture-stop', () => emulator.stopCapture())
   ipcMain.handle('emulator:video-input', (_, cfg: EmulatorConfig) => emulator.setVideoInput(cfg))
+  ipcMain.handle('emulator:decklink', (_, cfg: EmulatorConfig) => emulator.setDecklinkDevice(cfg))
+  ipcMain.handle('emulator:decklink-refresh', () => emulator.refreshDecklinks())
   ipcMain.handle('emulator:network', (_, up: boolean) => emulator.setNetwork(up))
   ipcMain.handle('emulator:nvram-read', (_, cfg: EmulatorConfig) => emulator.readNvram(cfg))
   ipcMain.handle('emulator:nvram-write', (_, cfg: EmulatorConfig, data: Uint8Array) => emulator.writeNvram(cfg, data))

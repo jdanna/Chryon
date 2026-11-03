@@ -1,3 +1,6 @@
+## 1.7.0
+- The desktop app plays Color Edit, Video or Key out of a Blackmagic DeckLink as NTSC, following SECOND SCREEN. The browser version doesn't have this.
+
 ## 1.6.3
 - Fixed a picture recalled from Image Tools vanishing when you start typing over it
 - The MOUSE / TABLET switch has an AUTO setting, now the default: your pointer is the tablet over Color Edit and the mouse over Prompts

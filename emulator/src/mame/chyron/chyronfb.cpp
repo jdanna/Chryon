@@ -394,12 +394,12 @@ void chyron_fb_device::render_key(bitmap_rgb32 &bitmap, rectangle const &cliprec
 	}
 }
 
-void chyron_fb_device::render_field(uint32_t *frame, unsigned first_line, unsigned width, unsigned height) const
+void chyron_fb_device::render_field(uint32_t *frame, unsigned first_line, unsigned width, unsigned height, bool faded) const
 {
 	for (unsigned y = first_line; y < height; y += 2)
 	{
 		uint32_t *const dest = &frame[y * width];
-		unsigned const level = line_level(y);
+		unsigned const level = faded ? line_level(y) : LEVEL_FULL;
 		for (unsigned x = 0; x < width; x++)
 		{
 			uint32_t video;

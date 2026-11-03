@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { CaptureState, EmulatorConfig, EmulatorStatus } from '@shared/types'
+import type { CaptureState, DecklinkSource, DecklinkState, EmulatorConfig, EmulatorStatus } from '@shared/types'
 import { errorMessage } from '../format'
 import type { LogKind } from './LogPanel'
 import NvramPanel from './NvramPanel'
@@ -18,6 +18,8 @@ interface Props {
 }
 
 const CAPTURE_IDLE: CaptureState = { active: false, seconds: 0, bytes: 0, behind: false }
+const DECKLINK_IDLE: DecklinkState = { driver: null, devices: [], active: null, source: 'color-edit', error: null }
+const SOURCE_NAMES: Record<DecklinkSource, string> = { 'color-edit': 'Color Edit', video: 'Video', key: 'Key' }
 
 const megabytes = (bytes: number): string => `${(bytes / 1048576).toFixed(1)} MB`
 const elapsed = (seconds: number): string => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`
@@ -29,6 +31,7 @@ export default function EmulatorTab({ settings, onSettings, log: appLog, setStat
   const [networkBusy, setNetworkBusy] = useState(false)
   const [capture, setCapture] = useState(CAPTURE_IDLE)
   const [captureBusy, setCaptureBusy] = useState(false)
+  const [decklink, setDecklink] = useState(DECKLINK_IDLE)
   const output = useRef<HTMLDivElement>(null)
   const followOutput = useRef(true)
 
@@ -79,6 +82,10 @@ export default function EmulatorTab({ settings, onSettings, log: appLog, setStat
   )
 
   useEffect(() => api.onEmulatorCapture(setCapture), [])
+  useEffect(() => api.onEmulatorDecklink(setDecklink), [])
+  useEffect(() => {
+    api.emulatorDecklinkRefresh()
+  }, [])
 
   useEffect(() => {
     const el = output.current
@@ -143,6 +150,33 @@ export default function EmulatorTab({ settings, onSettings, log: appLog, setStat
     } catch (err) {
       log(`Could not change the video input: ${errorMessage(err)}`, 'error')
     }
+  }
+
+  const setDecklinkDevice = async (name: string): Promise<void> => {
+    const next = { ...settings, decklink: name }
+    onSettings(next)
+    try {
+      await api.emulatorDecklink(next)
+    } catch (err) {
+      log(`Could not change the DeckLink output: ${errorMessage(err)}`, 'error')
+    }
+  }
+
+  // The saved device stays in the list when it isn't connected, so choosing another is deliberate
+  const decklinkChoices = settings.decklink && !decklink.devices.includes(settings.decklink) ? [...decklink.devices, settings.decklink] : decklink.devices
+  const decklinkNote = (): JSX.Element => {
+    if (decklink.error) return <div className={`${styles.note} ${ui.hintWarn}`}>{decklink.error}</div>
+    if (decklink.driver === false)
+      return <div className={`${styles.note} ${ui.hintWarn}`}>Blackmagic Desktop Video isn't installed, so there are no DeckLink devices.</div>
+    if (decklink.driver && decklink.devices.length === 0)
+      return <div className={`${styles.note} ${ui.hintWarn}`}>No DeckLink devices found. Connect one, then Refresh.</div>
+    if (decklink.active)
+      return (
+        <span className={`${ui.mono} ${styles.pathValue}`}>
+          {SOURCE_NAMES[decklink.source]}, NTSC 525i59.94
+        </span>
+      )
+    return <div className={styles.note}>Plays Color Edit, Video or Key as NTSC 525i59.94, whichever SECOND SCREEN shows.</div>
   }
 
   const pickVideoInput = async (): Promise<void> => {
@@ -369,6 +403,30 @@ export default function EmulatorTab({ settings, onSettings, log: appLog, setStat
                 </button>
               </div>
             </div>
+          </div>
+
+          <div className={ui.sectionHeader}>
+            DeckLink output
+            <span className={ui.sectionMeta}>{decklink.active ? 'playing' : 'off'}</span>
+          </div>
+          <div className={styles.block}>
+            <label className={styles.path}>
+              <span className={styles.pathLabel}>Device</span>
+              <select value={settings.decklink} onChange={(e) => setDecklinkDevice(e.target.value)}>
+                <option value="">Off</option>
+                {decklinkChoices.map((name) => (
+                  <option key={name} value={name}>
+                    {decklink.driver !== null && !decklink.devices.includes(name) ? `${name} (not found)` : name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className={styles.buttons}>
+              <button className={ui.btnSmall} disabled={!!status?.missing} onClick={() => api.emulatorDecklinkRefresh()}>
+                Refresh
+              </button>
+            </div>
+            {decklinkNote()}
           </div>
         </section>
 

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { CaptureState, MaxineApi, UploadProgress } from '@shared/types'
+import type { CaptureState, DecklinkState, MaxineApi, UploadProgress } from '@shared/types'
 
 const api: MaxineApi = {
   platform: process.platform,
@@ -40,6 +40,8 @@ const api: MaxineApi = {
   openCaptureFolder: (cfg) => ipcRenderer.invoke('emulator:open-capture-folder', cfg),
   pickVideoInput: () => ipcRenderer.invoke('emulator:pick-video-input'),
   emulatorVideoInput: (cfg) => ipcRenderer.invoke('emulator:video-input', cfg),
+  emulatorDecklink: (cfg) => ipcRenderer.invoke('emulator:decklink', cfg),
+  emulatorDecklinkRefresh: () => ipcRenderer.invoke('emulator:decklink-refresh'),
   resetEmulatorDisk: (cfg) => ipcRenderer.invoke('emulator:reset', cfg),
   readNvram: (cfg) => ipcRenderer.invoke('emulator:nvram-read', cfg),
   writeNvram: (cfg, data) => ipcRenderer.invoke('emulator:nvram-write', cfg, data),
@@ -57,6 +59,11 @@ const api: MaxineApi = {
     const handler = (_: unknown, state: CaptureState): void => listener(state)
     ipcRenderer.on('emulator:capture', handler)
     return () => ipcRenderer.off('emulator:capture', handler)
+  },
+  onEmulatorDecklink: (listener) => {
+    const handler = (_: unknown, state: DecklinkState): void => listener(state)
+    ipcRenderer.on('emulator:decklink', handler)
+    return () => ipcRenderer.off('emulator:decklink', handler)
   }
 }
 

@@ -492,6 +492,17 @@ python3 tools/phile.py ls emulator/roms/maxine-v11.01.img /SYSTEM/PROGRAMS
   `capture stop` on stdin, which is a pipe on all platforms. EOF quits on Windows only. Tested on 2026-11-02 in a Linux
   AppImage and with `maxine.exe` and `ffmpeg.exe` under Wine, whose default prefix can hang, so use a fresh `WINEPREFIX`
   with `WINEDLLOVERRIDES="mscoree,mshtml="`. It hasn't run on a Mac or real Windows, or in an editor.
+- **DeckLink output** (`decklinkout.cpp`, added 2026-11-03): plays what SECOND SCREEN shows (Color Edit, Video or Key) as
+  `bmdModeNTSC` 8-bit UYVY, latched per frame, from the same field sampling as capture. `decklink list|<name>|off` on
+  stdin, `MAXINE_DECKLINK_*` and `MAXINE_SECOND_SCREEN` on stdout, parsed in `emulator.ts`. Scheduled playback with 3
+  frames prerolled: the machine blocks when 2 more are waiting, and the device repeats the last frame when none is. The
+  SDK 12.2.2 headers are GStreamer's copy in `emulator/third_party/decklink/`, and `build.sh` copies the target's folder
+  to `chyron/decklink/`. The library loads at run time from Desktop Video, so nothing is bundled. While the emulator is
+  stopped, the app lists devices by running the binary with `MAXINE_DECKLINK_LIST=1`: a static initializer in
+  `decklinkout.cpp` prints the list and exits before MAME starts (about 13 ms). `MAXINE_DECKLINK_DUMP=<file>` adds a
+  `dump` device that writes the frames. Tested: the dump on Linux, no driver under Wine and in the 22.04 container, and
+  the user's card listed on Windows on 2026-11-03 (1.7.0). Playout on a real card is unconfirmed everywhere. The Mac
+  build hasn't been compiled: its SDK signatures were checked by hand, and MAME's Mac OSD already links CoreFoundation.
 - `build-ffmpeg.sh` builds a 2 MB LGPL ffmpeg with only ProRes and what feeds it, from a pinned commit on GitHub. Never add
   `--enable-gpl`, and `vendor-emulator.mjs` refuses a build that has it.
 - To test a roll: save pages with RCD, `$f1`. It refuses an address that exists, and the default disk has 1000 and 1001.

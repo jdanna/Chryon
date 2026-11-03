@@ -13,6 +13,15 @@ MAME=${MAXINE_MAME_DIR:-$HERE/mame}
 mkdir -p "$MAME/src/mame/chyron"
 cp "$HERE"/src/mame/chyron/* "$MAME/src/mame/chyron/"
 
+# The DeckLink SDK's headers for the target, which decklinkout.cpp includes. The web has no DeckLink.
+case "${MAXINE_TARGET:-}" in
+    windows) DECKLINK=win ;;
+    web) DECKLINK= ;;
+    *) [ "$(uname -s)" = Darwin ] && DECKLINK=mac || DECKLINK=linux ;;
+esac
+rm -rf "$MAME/src/mame/chyron/decklink"
+[ -n "$DECKLINK" ] && cp -R "$HERE/third_party/decklink/$DECKLINK" "$MAME/src/mame/chyron/decklink"
+
 # The MVME162's 82596 needs byte order and framing MAME doesn't have
 apply_patches() {
     for PATCH in "$@"; do
@@ -49,7 +58,7 @@ fi
 cd "$MAME"
 
 SOURCES=$(cd src/mame && ls chyron/*.cpp | paste -sd , -)
-[ "${MAXINE_TARGET:-}" = web ] && SOURCES=$(echo "$SOURCES" | sed 's/chyron.fieldcapture.cpp,//')
+[ "${MAXINE_TARGET:-}" = web ] && SOURCES=$(echo "$SOURCES" | sed 's/chyron.decklinkout.cpp,//; s/chyron.fieldcapture.cpp,//')
 BUILD_KEY="$SOURCES pcap nosound"
 REGENIE=0
 if [ "$BUILD_KEY" != "$(cat .maxine-sources 2>/dev/null)" ]; then

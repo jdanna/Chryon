@@ -11,6 +11,7 @@ right, and a clickable panel of MAXINE! keys is below them.
 - Message compose and other built-in apps fully work.
 - Exports Fill and Key as PNGs.
 - Captures Fill and Key live as 59.94i ProRes files.
+- Plays Color Edit, Fill or Key out of a Blackmagic DeckLink as NTSC.
 - Feeds a picture to the Video Input board.
 - Emulates a mouse and a WACOM SD510C tablet.
 - Includes 64 MB of expansion RAM.
@@ -70,7 +71,8 @@ works there too.
 
 The panel's key in the Num Lock position switches the right-hand screen between Color Edit, Video and Key. It's labelled
 with what's showing, and lit on Video and Key. Those two are the clean outputs, so the cursor and text box aren't on
-them, and capture and export don't change with it. It goes back to Color Edit each time the emulator starts.
+them, and capture and export don't change with it. A DeckLink output plays whichever is showing. It goes back to
+Color Edit each time the emulator starts.
 
 Command-V pastes the clipboard as plain ASCII. On Windows, it's Right Alt+V, because Windows keeps Win+V.
 
@@ -171,6 +173,31 @@ A capture refuses to start with under 1 GB free and stops itself under 500 MB, b
 finished. Capture is only in the app. A checkout needs `emulator/build-ffmpeg.sh` run once, and a packaged app includes
 ffmpeg.
 
+### DeckLink output
+
+The DeckLink output section of the Emulator tab plays the machine out of a Blackmagic DeckLink or UltraStudio as NTSC
+525i59.94, 8-bit 4:2:2. It plays whatever the right-hand screen shows: Color Edit, Video or Key. The SECOND SCREEN key
+switches between them, and the tab says which is playing. Key goes out as luma, white where the graphics are. A switch
+always lands on a whole frame.
+
+- Install Blackmagic Desktop Video 12.2 or later. The app doesn't include it.
+- Pick the device in the tab, whether or not the emulator is running. It's remembered, and it starts playing whenever
+  the emulator runs. Off stops it, and so does stopping the emulator, after which the device shows its own idle picture.
+- Refresh looks for devices again, after one is plugged in.
+
+Fields are sampled like the capture's, lower field first. The device's clock sets the pace: when the machine is a little
+fast, it waits for the device, and when it's a little slow, the device shows the last frame again. The picture is
+100 to 200 ms behind the window.
+
+For a test without a card, set `MAXINE_DECKLINK_DUMP` to a file path before starting the app. A device called `dump`
+then appears, and writes each frame it would play to that file. `ffmpeg -f rawvideo -pixel_format uyvy422 -video_size
+720x486 -framerate 30000/1001 -i <file> out.mov` reads it. It grows by 21 MB a second.
+
+The driver takes `decklink list`, `decklink <device name>` and `decklink off` on stdin, and answers with
+`MAXINE_DECKLINK_*` lines. It prints `MAXINE_SECOND_SCREEN color-edit`, `video` or `key` each time the output changes.
+With `MAXINE_DECKLINK_LIST` set, the binary prints the device list and exits before MAME starts, which is how the app
+lists devices while the emulator is stopped.
+
 ### Video input
 
 The emulated MAXINE has a Video Input board, and a picture you choose is what it sees. In the app, use Browse in the
@@ -224,6 +251,8 @@ for CNTL with those letters. Paste with Command-V, or Ctrl+Shift+V on Windows an
 - No boot PROM dump: the driver loads the operating system from disk itself.
 - The edge colour, Prompts palette and 50 MHz CPU speed are guesses.
 - A capture's field order and 10:11 tag follow the NTSC standard. They haven't been measured on a real unit.
+- DeckLink output has been tested with the `dump` device on Linux and under Wine without a driver. A real DeckLink was
+  found on Windows, but playout hasn't been checked on any system yet, and the Mac build hasn't been compiled.
 - The video input ignores the Gain, Black, Delay and Field settings, and Cap Mode hasn't been tried.
 - The clock and date can read wrongly.
 - Fn+Delete also switches to MAME's controls, and pressing it again switches back. In that mode Esc can quit.

@@ -106,6 +106,22 @@ export interface EmulatorConfig {
   captureFolder: string
   /** The picture the Video Input board sees. Empty for none. */
   videoInput: string
+  /** The DeckLink device to play out of, by its display name. Empty for none. */
+  decklink: string
+}
+
+/** What the SECOND SCREEN key shows, and so what a DeckLink plays. */
+export type DecklinkSource = 'color-edit' | 'video' | 'key'
+
+/** Only known while the emulator runs, because the emulator is what talks to the DeckLink. */
+export interface DecklinkState {
+  /** Whether Desktop Video is installed, or null until the emulator has looked. */
+  driver: boolean | null
+  devices: string[]
+  /** The device playing, or null. */
+  active: string | null
+  source: DecklinkSource
+  error: string | null
 }
 
 export interface CaptureState {
@@ -233,6 +249,10 @@ export interface MaxineApi {
   pickVideoInput(): Promise<string | null>
   /** Sends cfg.videoInput to the running emulator. */
   emulatorVideoInput(cfg: EmulatorConfig): Promise<void>
+  /** Plays the running emulator out of cfg.decklink, or stops playing if it's empty. */
+  emulatorDecklink(cfg: EmulatorConfig): Promise<void>
+  /** Asks the running emulator for its DeckLink devices again. */
+  emulatorDecklinkRefresh(): Promise<void>
   /** Asks for confirmation in a native dialog. Resolves to false if declined. */
   resetEmulatorDisk(cfg: EmulatorConfig): Promise<boolean>
   readNvram(cfg: EmulatorConfig): Promise<NvramFile>
@@ -240,4 +260,5 @@ export interface MaxineApi {
   onEmulatorLog(listener: (lines: string[]) => void): () => void
   onEmulatorState(listener: (running: boolean) => void): () => void
   onEmulatorCapture(listener: (state: CaptureState) => void): () => void
+  onEmulatorDecklink(listener: (state: DecklinkState) => void): () => void
 }

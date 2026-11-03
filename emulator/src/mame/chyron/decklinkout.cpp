@@ -1,6 +1,10 @@
 // license:BSD-3-Clause
 // copyright-holders:Joey D'Anna
 
+// The web has no DeckLink. MAME's dependency scan builds this file there anyway, because maxine.cpp includes
+// decklinkout.h, and the scan doesn't see the #if around that include.
+#if !defined(__EMSCRIPTEN__)
+
 #include "emu.h"
 #include "decklinkout.h"
 
@@ -488,3 +492,5 @@ void decklink_output::convert_row(uint32_t const *source, uint8_t *dest, bool ke
 		dest[3] = 16 + ((66 * r1 + 129 * g1 + 25 * b1 + 128) >> 8);
 	}
 }
+
+#endif // !__EMSCRIPTEN__

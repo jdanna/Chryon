@@ -62,6 +62,7 @@ export default function WebApp(): JSX.Element {
     <div className={styles.app}>
       <header className={styles.bar}>
         <span className={styles.name}>MAXINE!</span>
+        <span className={`${ui.mono} ${styles.version}`}>v{__APP_VERSION__}</span>
         <button className={ui.btnSmall} disabled={busy} onClick={stop}>
           Stop
         </button>

@@ -23,6 +23,12 @@
   margin-right: var(--space-1);
 }
 
+.version {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin-right: var(--space-1);
+}
+
 .status {
   flex: 1;
   min-width: 0;

@@ -2,6 +2,8 @@
 
 A desktop app that converts fonts for the Chyron MAXINE! and other iNFiNiT! series character generators, and a full emulator of a MAXINE! based on MAME.
 
+**Try the emulator in your browser at [maxine.retrograde.tools](https://maxine.retrograde.tools).**
+
 ![Comic Sans on a Sony CRT, with the MAXINE! control screen beside it](docs/maxine-crt.jpg)
 
 ![The emulator running Message Compose](docs/emulator.png)

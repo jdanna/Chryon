@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell } from 'electron'
 import { ChildProcess, execFile, spawn } from 'child_process'
 import { existsSync, readFileSync } from 'fs'
 import { chmod, copyFile, mkdir, open, readFile, rename, rm, stat, writeFile } from 'fs/promises'
@@ -25,6 +25,8 @@ const WINDOWS_ADAPTER = 'MAXINE Emulator'
 // and this suffix, so a line from the emulated machine can't name a file elsewhere.
 const EXPORT_LINE = /MAXINE_EXPORT (\d+(-640x480)?\.png)\s*$/
 const EXPORT_KINDS = ['video', 'key']
+const VIDEO_INPUT_FILE = 'video-input.png'
+const PICTURE_EXTENSIONS = ['png', 'jpg', 'jpeg']
 const TAP_DOWNLOAD = 'https://build.openvpn.net/downloads/releases/tap-windows-9.24.7-I601-Win10.exe'
 
 interface Layout {
@@ -69,6 +71,12 @@ const folderPath = (cfg: EmulatorConfig): string => cfg.folder || join(app.getPa
 const captureFolderPath = (cfg: EmulatorConfig): string => cfg.captureFolder || join(folderPath(cfg), 'capture')
 const diskPath = (cfg: EmulatorConfig): string => join(folderPath(cfg), 'disk.chd')
 const nvramPath = (cfg: EmulatorConfig): string => join(folderPath(cfg), 'nvram', 'maxine', 'nvram')
+
+function readPicture(path: string): Electron.NativeImage {
+  const picture = nativeImage.createFromPath(path)
+  if (picture.isEmpty()) throw new Error(`${basename(path)} isn't a picture this app can read. Use a PNG or JPEG.`)
+  return picture
+}
 
 async function assertChd(path: string): Promise<void> {
   const file = await open(path, 'r')
@@ -327,6 +335,20 @@ export class Emulator {
       })
     })
     this.send('emulator:state', true)
+    if (cfg.videoInput) await this.setVideoInput(cfg).catch((err: Error) => this.addLine(`No video input: ${err.message}`))
+  }
+
+  /** The driver only reads PNG, so the picture goes to it as one, in the machine's folder. */
+  async setVideoInput(cfg: EmulatorConfig): Promise<void> {
+    const stdin = this.child?.stdin
+    if (!stdin?.writable) return
+    if (!cfg.videoInput) {
+      stdin.write('videoin off\n')
+      return
+    }
+    const path = join(folderPath(cfg), VIDEO_INPUT_FILE)
+    await writeFile(path, readPicture(cfg.videoInput).toPNG())
+    stdin.write(`videoin ${path}\n`)
   }
 
   async startCapture(cfg: EmulatorConfig): Promise<void> {
@@ -407,6 +429,7 @@ export function registerEmulator(win: BrowserWindow): Emulator {
   ipcMain.handle('emulator:stop', () => emulator.stop())
   ipcMain.handle('emulator:capture-start', (_, cfg: EmulatorConfig) => emulator.startCapture(cfg))
   ipcMain.handle('emulator:capture-stop', () => emulator.stopCapture())
+  ipcMain.handle('emulator:video-input', (_, cfg: EmulatorConfig) => emulator.setVideoInput(cfg))
   ipcMain.handle('emulator:network', (_, up: boolean) => emulator.setNetwork(up))
   ipcMain.handle('emulator:nvram-read', (_, cfg: EmulatorConfig) => emulator.readNvram(cfg))
   ipcMain.handle('emulator:nvram-write', (_, cfg: EmulatorConfig, data: Uint8Array) => emulator.writeNvram(cfg, data))
@@ -449,6 +472,17 @@ export function registerEmulator(win: BrowserWindow): Emulator {
       properties: ['openDirectory', 'createDirectory']
     })
     return canceled ? null : filePaths[0]
+  })
+
+  ipcMain.handle('emulator:pick-video-input', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+      title: 'Choose a picture for the video input',
+      properties: ['openFile'],
+      filters: [{ name: 'Pictures', extensions: PICTURE_EXTENSIONS }]
+    })
+    if (canceled) return null
+    readPicture(filePaths[0])
+    return filePaths[0]
   })
 
   ipcMain.handle('emulator:reset', async (_, cfg: EmulatorConfig) => {

@@ -11,6 +11,7 @@ right, and a clickable panel of MAXINE! keys is below them.
 - Message compose and other built-in apps fully work.
 - Exports Fill and Key as PNGs.
 - Captures Fill and Key live as 59.94i ProRes files.
+- Feeds a picture to the Video Input board.
 - Emulates a mouse and a WACOM SD510C tablet.
 - Includes 64 MB of expansion RAM.
 
@@ -155,6 +156,22 @@ A capture refuses to start with under 1 GB free and stops itself under 500 MB, b
 finished. Capture is only in the app. A checkout needs `emulator/build-ffmpeg.sh` run once, and a packaged app includes
 ffmpeg.
 
+### Video input
+
+The emulated MAXINE has a Video Input board, and a picture you choose is what it sees. In the app, use Browse in the
+Video input section of the Emulator tab; on the web, Video in on the top bar. PNG and JPEG work in the app, and any
+picture the browser reads on the web.
+
+In Message Compose, CNTL then I opens Video Input Control, which shows the picture live. Space switches between Video
+Input and Video Freeze. Leave the menu live and the video stays behind your text, wherever the graphics leave it
+uncovered. ALT then V turns that background on and off. With it off, a frozen picture is only kept if Key Enable was
+on when it was captured, and each row you type is redrawn on black, as on the real unit. The Key output is the
+graphics' key either way.
+
+A picture fills the 4:3 frame without cropping. Ordinary pictures have square pixels and are narrowed to NTSC's, which
+are 0.9 as wide as tall. A picture that's already an NTSC frame, 720 or 704 wide by 486 or 480 tall, is used pixel for
+pixel.
+
 ## Web version
 
 `npm run build:web` builds a static site in `dist-web/` that runs the emulator in a browser tab. It's the same driver,
@@ -167,7 +184,9 @@ in `~/emsdk`, or `$EMSDK`. The first build takes about 20 minutes, in its own tr
 whose production branch is `main`, which serves maxine.retrograde.tools. Cloudflare's own Git builds can't make this
 site, because they have no Emscripten and stop at 20 minutes.
 
-It has the screens, panel, keyboard, mouse, paste and PNG export, which downloads the pair. It has no network, telnet or
+The startup page shows the release notes from `src/web/CHANGELOG.md`, so add an entry there with each web release.
+
+It has the screens, panel, keyboard, mouse, paste, video input and PNG export, which downloads the pair. It has no network, telnet or
 capture. The machine only runs while its tab is showing, because browsers stop drawing hidden tabs.
 
 Each browser keeps its own copy. The first visit downloads the disk, and the first time the machine writes to it, the
@@ -188,5 +207,6 @@ for CNTL with those letters. Paste with Command-V, or Ctrl+Shift+V on Windows an
 - No boot PROM dump: the driver loads the operating system from disk itself.
 - The edge colour, Prompts palette and 50 MHz CPU speed are guesses.
 - A capture's field order and 10:11 tag follow the NTSC standard. They haven't been measured on a real unit.
+- The video input ignores the Gain, Black, Delay and Field settings, and Cap Mode hasn't been tried.
 - The clock and date can read wrongly.
 - Fn+Delete also switches to MAME's controls, and pressing it again switches back. In that mode Esc can quit.

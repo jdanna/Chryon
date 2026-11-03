@@ -43,6 +43,8 @@
 #include <atomic>
 #include <bit>
 #include <csignal>
+#include <mutex>
+#include <optional>
 #include <cstdio>
 #include <cstdlib>
 #include "osdepend.h"
@@ -104,6 +106,15 @@ extern "C" EMSCRIPTEN_KEEPALIVE uint32_t maxine_fields()
 	return s_page_fields;
 }
 
+// A PNG the page wrote to the file system for the Video Input board, or an empty path for no picture,
+// until the machine takes it
+static std::optional<std::string> s_page_video_input;
+
+extern "C" EMSCRIPTEN_KEEPALIVE void maxine_video_input(char const *path)
+{
+	s_page_video_input = path;
+}
+
 #endif
 
 namespace {
@@ -134,7 +145,12 @@ static constexpr unsigned FIRST_ACTIVE_LINE = 21;
 static constexpr int CAPTURE_STOP = -1;
 static std::atomic<int> s_capture_command{0};
 
-// MAXINE! Studio's commands, a line at a time: "capture <port>" and "capture stop". The low-level read
+// A PNG for the Video Input board, or an empty path for no picture, until the machine takes it
+static std::mutex s_video_input_lock;
+static std::optional<std::string> s_video_input_path;
+
+// MAXINE! Studio's commands, a line at a time: "capture <port>", "capture stop", "videoin <PNG path>" and
+// "videoin off". The low-level read
 // matters: getchar() would hold a stream lock that exit() needs. Node can only terminate a process on
 // Windows, which loses the NVRAM, so the app closes stdin there to quit. Elsewhere it sends SIGTERM, and
 // closing means the app has gone, which shouldn't lose the machine.
@@ -157,6 +173,11 @@ static void read_commands()
 			s_capture_command = CAPTURE_STOP;
 		else if (line.rfind("capture ", 0) == 0)
 			s_capture_command = std::atoi(line.c_str() + 8);
+		else if (line.rfind("videoin ", 0) == 0)
+		{
+			std::lock_guard const lock(s_video_input_lock);
+			s_video_input_path = (line == "videoin off") ? std::string() : line.substr(8);
+		}
 		line.clear();
 	}
 #if defined(_WIN32)
@@ -315,6 +336,9 @@ public:
 		, m_scc(*this, "scc%u", 1U)
 		, m_lan(*this, "lan")
 		, m_fb(*this, "fb")
+		, m_line_levels(*this, "line_levels")
+		, m_line_level_control(*this, "line_level_control")
+		, m_video_input_regs(*this, "video_input_regs")
 		, m_mfp(*this, "mfp")
 		, m_keyboard_duart(*this, "keyboard_duart")
 		, m_panel(*this, "PANEL%u", 0U)
@@ -373,6 +397,8 @@ private:
 	int active_shift() const;
 	void panel_key(uint16_t code);
 	void export_outputs(bool square, std::string const &folder = std::string(), bool ask = false);
+	void set_video_input(uint8_t const *rgba, int width, int height);
+	void load_video_input(std::string const &path);
 	bool write_snapshot(std::string filename, bitmap_rgb32 const &bitmap);
 	void write_file(std::string const &path, bitmap_rgb32 const &bitmap);
 
@@ -418,6 +444,9 @@ private:
 	required_device_array<scc85230_device, 2> m_scc;
 	required_device<i82596_le32_device> m_lan;
 	required_device<chyron_fb_device> m_fb;
+	required_shared_ptr<uint32_t> m_line_levels;
+	required_shared_ptr<uint32_t> m_line_level_control;
+	required_shared_ptr<uint32_t> m_video_input_regs;
 	required_device<mc68901_device> m_mfp;
 	required_device<mc68681_device> m_keyboard_duart;
 	required_ioport_array<3> m_panel;
@@ -480,6 +509,7 @@ private:
 	uint32_t *m_capture_frame = nullptr; // set between a frame's two fields
 #endif
 	uint32_t m_panel_last[3]{};
+	bitmap_rgb32 m_video_input; // what the Video Input board sees
 	int m_repeat_key = -1; // index into PANEL_KEYS
 	int m_repeat_wait = 0;
 	int m_shift = -1;
@@ -656,7 +686,8 @@ uint32_t maxine_state::prompt_update(screen_device &screen, bitmap_rgb32 &bitmap
 
 // Color Edit is the Video channel with the 34010 overlay on top, and is what an operator
 // composes on. Video and Key themselves are clean. The window's second screen can show either
-// in place of Color Edit.
+// in place of Color Edit. Color Edit doesn't fade, because Fade wants the next page composed
+// while the outputs are faded out.
 uint32_t maxine_state::edit_update(screen_device &screen, bitmap_rgb32 &bitmap, rectangle const &cliprect)
 {
 	if (m_second_screen == SHOW_KEY)
@@ -665,7 +696,7 @@ uint32_t maxine_state::edit_update(screen_device &screen, bitmap_rgb32 &bitmap, 
 		return 0;
 	}
 
-	m_fb->render_video(bitmap, cliprect);
+	m_fb->render_video(bitmap, cliprect, m_second_screen == SHOW_VIDEO);
 	if (m_second_screen == SHOW_VIDEO)
 		return 0;
 
@@ -697,7 +728,102 @@ void maxine_state::poll_host()
 		end_capture();
 	if (command > 0)
 		m_capture = std::make_unique<field_capture>(command);
+
+	std::optional<std::string> video_input;
+	{
+		std::lock_guard const lock(s_video_input_lock);
+		video_input.swap(s_video_input_path);
+	}
+	if (video_input)
+		load_video_input(*video_input);
+#else
+	if (s_page_video_input)
+	{
+		load_video_input(*s_page_video_input);
+		s_page_video_input.reset();
+	}
 #endif
+
+	// The board writes what it sees into the frame buffer for as long as the firmware lets it
+	if (m_fb->video_input_live())
+		m_fb->write_video_input(m_video_input, BIT(m_video_input_regs[4], 16));
+}
+
+// The picture fills the 4:3 frame without being cropped, centred on black. NTSC pixels are 0.9 as wide as tall,
+// so a picture with square pixels is narrowed, while one that's already an NTSC frame, 720 or 704 wide and 486
+// or 480 tall, keeps its pixels as they are. Each pixel averages the part of the picture it covers.
+void maxine_state::set_video_input(uint8_t const *rgba, int width, int height)
+{
+	static constexpr double PIXEL_WIDTH = 0.9;
+	static constexpr double EDGE = 1e-6; // so rounding doesn't take in a neighbour when pixels line up
+	int const out_width = m_video_input.width();
+	int const out_height = m_video_input.height();
+
+	m_video_input.fill(0);
+	if (width <= 0 || height <= 0)
+		return;
+	bool const ntsc = (width == 720 || width == 704) && (height == 486 || height == 480);
+	double const source_pixel = ntsc ? PIXEL_WIDTH : 1.0; // in square units, like frame_width
+	double const frame_width = out_width * PIXEL_WIDTH;
+	double const scale = std::min(frame_width / (width * source_pixel), double(out_height) / height);
+	double const left = (frame_width - width * source_pixel * scale) / 2;
+	double const top = (out_height - height * scale) / 2;
+
+	for (int y = 0; y < out_height; y++)
+	{
+		double const v0 = (y - top) / scale, v1 = (y + 1 - top) / scale;
+		if (v1 <= 0 || v0 >= height)
+			continue;
+		int const row0 = std::max(0, int(v0 + EDGE)), row1 = std::clamp(int(std::ceil(v1 - EDGE)), row0 + 1, height);
+		for (int x = 0; x < out_width; x++)
+		{
+			double const u0 = (x * PIXEL_WIDTH - left) / scale / source_pixel;
+			double const u1 = ((x + 1) * PIXEL_WIDTH - left) / scale / source_pixel;
+			if (u1 <= 0 || u0 >= width)
+				continue;
+			int const col0 = std::max(0, int(u0 + EDGE)), col1 = std::clamp(int(std::ceil(u1 - EDGE)), col0 + 1, width);
+			unsigned sum[3]{}, count = 0;
+			for (int row = row0; row < row1; row++)
+				for (int col = col0; col < col1; col++)
+				{
+					uint8_t const *const p = &rgba[(size_t(row) * width + col) * 4];
+					for (int c = 0; c < 3; c++)
+						sum[c] += p[c] * p[3] / 255; // on black
+					count++;
+				}
+			m_video_input.pix(y, x) = (sum[0] / count) << 16 | (sum[1] / count) << 8 | sum[2] / count;
+		}
+	}
+}
+
+void maxine_state::load_video_input(std::string const &path)
+{
+	if (path.empty())
+	{
+		set_video_input(nullptr, 0, 0);
+		logerror("Video input: none\n");
+		return;
+	}
+	util::core_file::ptr file;
+	bitmap_argb32 picture;
+	if (util::core_file::open(path, OPEN_FLAG_READ, file) || util::png_read_bitmap(*file, picture))
+	{
+		logerror("Video input: cannot read %s\n", path);
+		return;
+	}
+	std::vector<uint8_t> rgba(size_t(picture.width()) * picture.height() * 4);
+	for (int y = 0; y < picture.height(); y++)
+		for (int x = 0; x < picture.width(); x++)
+		{
+			rgb_t const pixel = picture.pix(y, x);
+			uint8_t *const p = &rgba[(size_t(y) * picture.width() + x) * 4];
+			p[0] = pixel.r();
+			p[1] = pixel.g();
+			p[2] = pixel.b();
+			p[3] = pixel.a();
+		}
+	set_video_input(rgba.data(), picture.width(), picture.height());
+	logerror("Video input: %dx%d picture\n", picture.width(), picture.height());
 }
 
 #if !defined(__EMSCRIPTEN__)
@@ -1391,12 +1517,16 @@ void maxine_state::maxine_mem(address_map &map)
 	map(0x00000000, 0xffffffff).rw(FUNC(maxine_state::unmapped_r), FUNC(maxine_state::unmapped_w));
 	map(0x00000000, 0x003fffff).ram().share("dram");
 	map(0x06000000, 0x09ffffff).ram().share("expram"); // Andrea board SIMMs, 64 MB
-	// Frame buffer board on VSB, and the video board's registers. Plain logged memory until
-	// they're understood. $81202100 up (601 board) and $81300000 up (camera) stay absent.
+	// Frame buffer board on VSB, and the video board's registers. Apart from the line levels that the frame
+	// buffer reads, they're plain memory until they're understood. $81202100 up (601 board) stays absent.
 	map(0x81000000, 0x8107ffff).rw(m_fb, FUNC(chyron_fb_device::read), FUNC(chyron_fb_device::write));
-	map(0x81200000, 0x81201fff).ram();
-	map(0x81202000, 0x812020ff).ram();
+	map(0x81200000, 0x81201fff).ram().share("line_levels");
+	map(0x81202000, 0x812020ff).ram().share("line_level_control");
 	map(0x81203000, 0x81205fff).ram();
+	// Video Input board. HWINIT finds it by reading $81300018. Message Compose writes Gain to +0 and Black to
+	// +4, as (state << 8 | percent * 255 / 100), Delay to +8, and Key Enable to bit 0 of +10. Only Key
+	// Enable is used here. See write_video_input() in chyronfb.cpp for the picture.
+	map(0x81300000, 0x8130001f).ram().share("video_input_regs");
 
 	// Andrea interface board, local decode
 	map(0x82100000, 0x82100007).rw(m_prompt, FUNC(tms34010_device::host_r), FUNC(tms34010_device::host_w));
@@ -1564,6 +1694,11 @@ void maxine_state::boot_stub()
 
 void maxine_state::machine_start()
 {
+	m_fb->set_line_levels(m_line_levels, m_line_level_control);
+	m_video_input.allocate(chyron_fb_device::VIDEO_INPUT_WIDTH, chyron_fb_device::VIDEO_INPUT_HEIGHT);
+	m_video_input.fill(0);
+	m_fb->set_video_input(&m_video_input);
+
 	// SDL turns these into an event that MAME never reads, so a plain kill wouldn't stop the machine.
 	// Exiting through the scheduler is what saves the NVRAM.
 	std::signal(SIGTERM, request_quit);

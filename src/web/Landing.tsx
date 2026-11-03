@@ -1,4 +1,5 @@
 import icon from './assets/icon.png'
+import { changelog } from './changelog'
 import logo from './assets/retrograde-logo-only.png'
 import wordmark from './assets/wordmark.png'
 import styles from './Landing.module.css'
@@ -61,6 +62,27 @@ export default function Landing({ busy, status, saved, onStart, onReset }: Props
             <p>{text}</p>
           </div>
         ))}
+      </section>
+
+      <section className={styles.changelog} aria-labelledby="changelog-title">
+        <h2 id="changelog-title" className={styles.changelogLabel}>
+          Changelog
+        </h2>
+        <div className={styles.changelogBox}>
+          {changelog.map((block, i) =>
+            block.kind === 'heading' ? (
+              <h3 key={i}>{block.text}</h3>
+            ) : block.kind === 'text' ? (
+              <p key={i}>{block.text}</p>
+            ) : (
+              <ul key={i}>
+                {block.items.map((item, j) => (
+                  <li key={j}>{item}</li>
+                ))}
+              </ul>
+            )
+          )}
+        </div>
       </section>
 
       <footer className={styles.footer}>

@@ -14,7 +14,9 @@ export default function WebApp(): JSX.Element {
   const [status, setStatus] = useState('')
   const [saved, setSaved] = useState(false)
   const [speed, setSpeed] = useState<number | null>(null)
+  const [videoInput, setVideoInput] = useState('')
   const screen = useRef<HTMLCanvasElement>(null)
+  const picker = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     onStatus(setStatus)
@@ -41,6 +43,17 @@ export default function WebApp(): JSX.Element {
     await machine.stop()
   }
 
+  const chooseVideoInput = async (file: File | null): Promise<void> => {
+    try {
+      await machine.videoInput(file)
+      setVideoInput(file?.name ?? '')
+      setStatus(file ? `Video input: ${file.name}. In Message Compose, CNTL then I shows it.` : 'No video input')
+    } catch (err) {
+      setStatus(errorText(err))
+    }
+    screen.current?.focus()
+  }
+
   const reset = async (): Promise<void> => {
     if (confirm('Go back to the original disk? This deletes your saved messages and settings.')) await machine.reset()
   }
@@ -55,6 +68,25 @@ export default function WebApp(): JSX.Element {
         <button className={ui.btnSmall} disabled={busy} onClick={reset}>
           Reset…
         </button>
+        <button className={ui.btnSmall} disabled={busy || !running} onClick={() => picker.current?.click()} title={videoInput || undefined}>
+          Video in…
+        </button>
+        {videoInput && (
+          <button className={ui.btnSmall} disabled={busy || !running} onClick={() => chooseVideoInput(null)}>
+            Clear video
+          </button>
+        )}
+        <input
+          ref={picker}
+          type="file"
+          accept="image/*"
+          hidden
+          onChange={(e) => {
+            const file = e.currentTarget.files?.[0] ?? null
+            e.currentTarget.value = ''
+            if (file) void chooseVideoInput(file)
+          }}
+        />
         <span className={styles.status}>{status}</span>
         {speed !== null && <span className={`${ui.mono} ${styles.speed}`}>{speed}%</span>}
       </header>

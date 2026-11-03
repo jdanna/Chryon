@@ -128,7 +128,8 @@ export default function App(): JSX.Element {
           <EmulatorTab settings={settings.emulator} onSettings={(emulator) => setSettings({ ...settings, emulator })} log={addLog} setStatus={setStatus} />
         </div>
       </div>
-      <LogPanel entries={log} onClear={() => setLog([])} />
+      {/* The Emulator tab has its own log */}
+      <LogPanel entries={log} onClear={() => setLog([])} hidden={tab === 'emulator'} />
       {dragging && (
         <div className={styles.dropOverlay}>
           <span className={styles.dropLabel}>Drop a .ttf, .otf or .ttc font</span>

@@ -395,6 +395,11 @@ python3 tools/phile.py ls emulator/roms/maxine-v11.01.img /SYSTEM/PROGRAMS
 - The mouse isn't captured: the layout script writes the host pointer to a test port and
   `update_mouse()` steers the firmware's cursor to it with serial mouse packets. See "Mouse cursor" in
   `docs/hardware-map.md` for how it stays lined up.
+- The Video Input board at `$81300000` takes a picture from the app (`videoin <PNG path>` or `videoin off` on stdin)
+  or the web page (`maxine_video_input`, a PNG in MEMFS), and writes it into the frame buffer while the firmware
+  holds control bits 10 and 6 clear. Control bit 1 (ALT V, or leaving the menu live) composites it behind the
+  graphics on Video and Color Edit, not Key. `set_video_input` in `maxine.cpp` fits it to 4:3 and only narrows square-pixel
+  pictures: 720 or 704 by 486 or 480 is taken as NTSC already. See `docs/hardware-map.md`.
 - The frame buffer's data port takes font file records directly, so `tools/maxine_font.py` is a good
   oracle for it.
 - **It's an MVME162, not a 167.** Earlier notes in the repo history said 167.
@@ -442,7 +447,8 @@ python3 tools/phile.py ls emulator/roms/maxine-v11.01.img /SYSTEM/PROGRAMS
   ROLL and the key too, because that's when the firmware copies the page between banks through the `+18` pixel port.
 - `tests/script.py` builds input scripts and `tests/drive.lua` plays them. Run them with `-window -video
   none -mouseprovider none -keyboardprovider none`. Any real window takes pointer events from the user's
-  mouse despite the providers, which corrupts the test, and leaving out `-window` goes fullscreen.
+  mouse despite the providers, which corrupts the test, and leaving out `-window` goes fullscreen. Set
+  `SDL_VIDEODRIVER=dummy` too, or a blank window opens on the user's screen; snapshots still work.
   `tools/dis68.py` disassembles firmware, and modules are at file offset = address − load base.
 - Bring-up technique: `-debug -debugger none -autoboot_script x.lua` runs headless with breakpoints.
   `cpu.debug:bpset(addr, cond, 'logerror "...",d0; g')` logs to `error.log` (`-log`), and a breakpoint

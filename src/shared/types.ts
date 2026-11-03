@@ -89,6 +89,8 @@ export interface EmulatorConfig {
   folder: string
   /** Where video captures go. Empty for capture/ in the folder above. */
   captureFolder: string
+  /** The picture the Video Input board sees. Empty for none. */
+  videoInput: string
 }
 
 export interface CaptureState {
@@ -202,6 +204,10 @@ export interface MaxineApi {
   openEmulatorFolder(cfg: EmulatorConfig): Promise<void>
   pickCaptureFolder(): Promise<string | null>
   openCaptureFolder(cfg: EmulatorConfig): Promise<void>
+  /** Resolves to null if cancelled, and rejects a file that isn't a picture the app can read. */
+  pickVideoInput(): Promise<string | null>
+  /** Sends cfg.videoInput to the running emulator. */
+  emulatorVideoInput(cfg: EmulatorConfig): Promise<void>
   /** Asks for confirmation in a native dialog. Resolves to false if declined. */
   resetEmulatorDisk(cfg: EmulatorConfig): Promise<boolean>
   readNvram(cfg: EmulatorConfig): Promise<NvramFile>

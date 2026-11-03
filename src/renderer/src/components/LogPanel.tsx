@@ -20,7 +20,7 @@ export interface LogEntry {
   kind: LogKind
 }
 
-export default function LogPanel({ entries, onClear }: { entries: LogEntry[]; onClear(): void }): JSX.Element {
+export default function LogPanel({ entries, onClear, hidden }: { entries: LogEntry[]; onClear(): void; hidden?: boolean }): JSX.Element {
   const [open, setOpen] = useState(loadOpen)
   const body = useRef<HTMLDivElement>(null)
   const last = entries[entries.length - 1]
@@ -43,7 +43,7 @@ export default function LogPanel({ entries, onClear }: { entries: LogEntry[]; on
   }
 
   return (
-    <section className={styles.panel}>
+    <section className={styles.panel} hidden={hidden}>
       <div className={`${ui.sectionHeader} ${styles.header}`} onClick={() => setOpen(!open)}>
         <span className={styles.chevron}>{open ? '▾' : '▸'}</span>
         Log

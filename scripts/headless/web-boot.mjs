@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 // Boots dist-web in headless Chrome and checks what a visitor depends on: the machine keeps real time, a key
-// reaches the firmware, the disk it writes lands in the browser, and a second visit runs from that copy
-// without downloading the image again. Build first with `npm run build:web`. CHROME_PATH picks the browser.
+// reaches the firmware, a picture reaches the video input, the disk it writes lands in the browser, and a second
+// visit runs from that copy without downloading the image again. Build first with `npm run build:web`. CHROME_PATH picks the browser.
 
 import { spawn } from 'node:child_process'
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { serve } from './web-server.mjs'
 
 const PORT = 8138
@@ -17,6 +18,7 @@ const COMPOSE_MS = 30000
 const SAVE_POLLS = 40 // half-second tries, because saves come 15 seconds apart and the write takes a moment
 const MIN_SPEED = 90
 const KEY_HOLD_MS = 130
+const PICTURE = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'docs', 'emulator.png')
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -54,8 +56,10 @@ try {
 
   let nextId = 0
   const pending = new Map()
+  const consoleLines = []
   socket.onmessage = ({ data }) => {
     const message = JSON.parse(data)
+    if (message.method === 'Runtime.consoleAPICalled') consoleLines.push(message.params.args.map((a) => a.value).join(' '))
     pending.get(message.id)?.(message)
     pending.delete(message.id)
   }
@@ -109,6 +113,14 @@ try {
   await press('Enter', 'Enter', 13)
   await sleep(COMPOSE_MS)
   await press('a', 'KeyA', 65)
+
+  const input = await send('Runtime.evaluate', { expression: `document.querySelector('input[type=file]')` })
+  await send('DOM.enable')
+  await send('DOM.setFileInputFiles', { files: [PICTURE], objectId: input.result.result.objectId })
+  for (let i = 0; i < 20 && !consoleLines.some((line) => line.includes('Video input:')); i++) await sleep(250)
+  const loaded = consoleLines.find((line) => line.includes('Video input:')) ?? 'nothing'
+  check(/\d+x\d+ picture/.test(loaded), `Video in hands the driver a picture: ${loaded.replace(/^\[:\] /, '')}`)
+
   await press('-', 'NumpadSubtract', 109) // RCD records the page, which is what writes to the disk
   let saved = 0
   for (let i = 0; i < SAVE_POLLS && !saved; i++) {

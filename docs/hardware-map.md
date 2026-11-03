@@ -180,9 +180,39 @@ lines after the field tick, on an exact 60000/1001 Hz.
 Unknown: real edge colour (the model uses entry 2 of the face colour's bank) and how face and edge
 share a 16-bit pixel (the model stores both).
 
-Also present, as plain memory in the emulator: `$81200000`–`$81201fff`, `$81202000`–`ff`, and
-`$81203000`–`$81205fff` (video board). HWINIT tests `$81202000` with `$aa55`. `$81202100` (601 board) and
-`$81300000` (camera) are left absent so those options report not found.
+**The video board fades each line (fw).** `$81200000` and `$81201000` are two tables of 1024 longs, one per display
+line, indexed like the frame buffer's line tables. Bits 15..9 of an entry are a level from 0 to 127. Bit 21 of the
+control word at `$81202000`, a copy of NVRAM `$fffc0114`, picks the table: clear `$81200000`, set `$81201000`. Message
+Compose sets every entry to `$0000fe00`. Its Fade (CNTL, Z, then Execute X) writes lines 23 to 507 of the hidden table
+and flips that bit, once a field, stepping the level from 127 to 0 over Speed fields, or back on the next Execute. The
+Loader leaves both tables at 0. With NVRAM `$fffc0246` bit 0 set, the firmware instead puts the level in bits 31..25
+and writes `$81203100`, presumably for another board. The emulator scales Video and Key by the level, because Video is
+already multiplied by the key. Whether the real board fades both isn't known, and the rest of each entry is unexplained.
+Color Edit isn't faded, because the firmware expects the next page to be composed while faded out. While Fade Control
+is open, Message Compose takes the cursor and safe title out of the overlay: the menu calls `$15682` with 8 to erase
+them on entry and with 1 to redraw them when it closes.
+
+Also present, as plain memory in the emulator: `$81202000`–`ff` apart from that bit, and
+`$81203000`–`$81205fff` (video board). HWINIT tests `$81202000` with `$aa55`. `$81202100` (601 board) is left absent so
+that option reports not found. Its probe also sets NVRAM `$fffc0246`, which picks the line levels' format above.
+
+**Video Input board (fw).** HWINIT reads `$81300018` and sets NVRAM `$fffc010a` to 3 when it answers, which
+Message Compose's Video Input menu (CNTL, I) needs. Message Compose writes words to the high half of four longs:
+`+0` Gain and `+4` Black as `state << 8 | percent * 255 / 100`, `+8` Delay (795 by default) and `+10` with Key
+Enable in bit 0. Settings come from `VIDEO.DEF` and are kept in NVRAM `$fffc022c` and `$fffc0240`. Live video and
+freeze go through the frame buffer's control register instead: opening the menu writes `$010003f8`, `$010003fa` then
+`$010003ba` for live, and Video Freeze goes `$010003fa` then `$010003f8`. So bit 10 clear selects the video input,
+bit 6 clear lets it write, bit 3 is set throughout (and the emulator requires it, since the register is 0 from reset), and Freeze leaves the last picture in the frame buffer. Bit 1 puts the video input behind
+the graphics, wherever their key is below full: it's set while live, stays set after leaving the menu live, and ALT V
+in Message Compose toggles it ("Enable Video for Background Page", frame buffer driver calls `$3d` and `$3e`). Without
+it, the black fill Message Compose draws behind each row of text covers a frozen picture. While the menu is open the
+firmware erases the safe title and cursor, as Fade does. While live, the firmware points lines 14 to 517 of both line
+tables 2 rows up and 1 pixel left, as x 2047, and Freeze puts them back to identity. Equal tables like these only
+shift a line, so they mustn't be read as a crawl's wrap into the other bank. The emulator writes the picture through
+the shown table into both banks, because Message Compose redraws each row of text in one bank and then the other,
+while bits 10 and 6 are clear, shows the frame buffer as a plain picture while bit 10 is clear, and
+otherwise keys it, so a captured picture stays visible only if Key Enable was on. Key is the graphics' key alone,
+even with the video behind them. Gain, Black, Delay, Field and Cap Mode aren't modelled.
 
 Video board 2A01707: ADV7120 × 2 for Y and C (p31), timing PROMs CY7C263, undumped (p23).
 Optional: F/X, Transformer (`$846`–`$85`), Camera capture, 601, Anchor (NCR53C720, `$810`, `$811`).

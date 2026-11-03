@@ -19,6 +19,9 @@
     $10000, $11000  line tables, 1024 longs each, for banks A and B: row * $800 + x for
                     each display line. A roll changes the row and a crawl changes x
     $30000  a third table, purpose unknown
+
+    The video board's line levels, which fade the outputs, are kept by the
+    driver and read here. See line_level().
     $20000  palette, 8 banks of 32 at bank << 8 | ramp
 
     A run record is a word of a font file: layer in the top 16 bits, intensity
@@ -224,7 +227,7 @@ chyron_fb_device::pixel const &chyron_fb_device::display_pixel(int y, int x) con
 	uint32_t const shown = m_regs[(bank ? LINES_B : LINES_A) + y];
 	uint32_t const hidden = m_regs[(bank ? LINES_A : LINES_B) + y];
 	unsigned const next = (hidden & (LINE_X_SIZE - 1)) + x;
-	if (next >= LINE_X_SIZE)
+	if (next >= LINE_X_SIZE && hidden != shown) // equal tables only shift the line, as Video Input's x of 2047 does
 		return row((hidden >> 11) + (bank ? 0 : ROWS / 2))[next - LINE_X_SIZE];
 	return row((shown >> 11) + (bank ? ROWS / 2 : 0))[((shown & (LINE_X_SIZE - 1)) + x) % ROW_PIXELS];
 }
@@ -245,15 +248,92 @@ void chyron_fb_device::output_pixel(pixel const &p, uint32_t &video, uint8_t &ke
 	key = k;
 }
 
-void chyron_fb_device::render_video(bitmap_rgb32 &bitmap, rectangle const &cliprect) const
+// Message Compose's Video Input menu clears control bits 10 and 6 for live video, with bit 3 set as in all its
+// values, which keeps the 0 the register holds from reset from meaning live. It sets bit 6 again for Video Freeze, which leaves the last picture there. While live, the firmware points every line 2 rows up and 1 pixel left
+// (x 2047), presumably where the board writes, and Freeze sets the tables back to identity, so the frozen picture
+// sits that much up and left of the live one. While bit 10
+// is clear the picture shows as it is. Afterwards it's part of the graphics only if Key Enable was on, because
+// otherwise its key is 0. The Gain, Black and Delay settings aren't modelled, nor is the Field setting.
+void chyron_fb_device::write_video_input(bitmap_rgb32 const &picture, bool keyed)
+{
+	static constexpr unsigned LINE_X_SIZE = 0x800;
+
+	// Into both banks, because Message Compose redraws each row of text in one and then the other
+	uint32_t const *const lines = &m_regs[(m_regs[REG_CONTROL] & CONTROL_BANK) ? LINES_B : LINES_A];
+	for (int y = 0; y < picture.height(); y++)
+	{
+		unsigned const line_row = (lines[y] >> 11) % (ROWS / 2);
+		unsigned const line_x = lines[y] & (LINE_X_SIZE - 1);
+		for (unsigned bank = 0; bank < 2; bank++)
+		{
+			pixel *const dest = row(line_row + bank * ROWS / 2);
+			for (int x = 0; x < picture.width(); x++)
+			{
+				pixel &p = dest[(line_x + x) % ROW_PIXELS];
+				p.color = picture.pix(y, x) & 0xffffff;
+				p.key = keyed ? 0xff : 0;
+				p.direct = 1;
+				p.under = 0;
+			}
+		}
+	}
+}
+
+// The video board scales each display line by a 7-bit level, bits 15..9 of its entry in one of two tables
+// at $81200000 and $81201000. Bit 21 of its control word at $81202000 shows the second. Message Compose's
+// Fade steps the level between 127 and 0, writing the hidden table and then flipping that bit. Video is
+// already multiplied by the key, so it fades with it. The rest of each entry is unexplained.
+static constexpr unsigned LEVEL_FULL = 127;
+
+unsigned chyron_fb_device::line_level(int y) const
+{
+	if (!m_levels)
+		return LEVEL_FULL;
+	return BIT(m_levels[(BIT(*m_level_control, 21) ? 0x1000 / 4 : 0) + y], 9, 7);
+}
+
+static void apply_level(uint32_t &video, uint8_t &key, unsigned level);
+
+// One display pixel of Video and Key. With control bit 10 clear, the Video Input menu's frame store, a picture shows
+// as it is. Otherwise the graphics are keyed, after the line's level, and control bit 1, Message Compose's ALT V,
+// puts the video input behind them. Key is the graphics' alone either way.
+void chyron_fb_device::output(int y, int x, unsigned level, uint32_t &video, uint8_t &key) const
+{
+	uint32_t const control = m_regs[REG_CONTROL];
+	pixel const &p = display_pixel(y, x);
+	if (!(control & CONTROL_GRAPHICS) && p.direct)
+	{
+		video = p.color;
+		key = p.key;
+	}
+	else
+		output_pixel(p, video, key);
+	apply_level(video, key, level);
+	if ((control & (CONTROL_GRAPHICS | CONTROL_VIDEO_BACKGROUND)) == (CONTROL_GRAPHICS | CONTROL_VIDEO_BACKGROUND) && m_video_input)
+		video += mix(0, m_video_input->pix(y, x), 255 - key); // graphics are already multiplied by their key
+}
+
+static void apply_level(uint32_t &video, uint8_t &key, unsigned level)
+{
+	if (level == LEVEL_FULL)
+		return;
+	unsigned const r = BIT(video, 16, 8) * level / LEVEL_FULL;
+	unsigned const g = BIT(video, 8, 8) * level / LEVEL_FULL;
+	unsigned const b = BIT(video, 0, 8) * level / LEVEL_FULL;
+	video = (r << 16) | (g << 8) | b;
+	key = key * level / LEVEL_FULL;
+}
+
+void chyron_fb_device::render_video(bitmap_rgb32 &bitmap, rectangle const &cliprect, bool faded) const
 {
 	for (int y = cliprect.min_y; y <= cliprect.max_y; y++)
 	{
 		uint32_t *const dest = &bitmap.pix(y);
+		unsigned const level = faded ? line_level(y) : LEVEL_FULL;
 		for (int x = cliprect.min_x; x <= cliprect.max_x; x++)
 		{
 			uint8_t key;
-			output_pixel(display_pixel(y, x), dest[x], key);
+			output(y, x, level, dest[x], key);
 		}
 	}
 }
@@ -263,11 +343,12 @@ void chyron_fb_device::render_key(bitmap_rgb32 &bitmap, rectangle const &cliprec
 	for (int y = cliprect.min_y; y <= cliprect.max_y; y++)
 	{
 		uint32_t *const dest = &bitmap.pix(y);
+		unsigned const level = line_level(y);
 		for (int x = cliprect.min_x; x <= cliprect.max_x; x++)
 		{
 			uint32_t video;
 			uint8_t key;
-			output_pixel(display_pixel(y, x), video, key);
+			output(y, x, level, video, key);
 			dest[x] = (key << 16) | (key << 8) | key;
 		}
 	}
@@ -278,11 +359,12 @@ void chyron_fb_device::render_field(uint32_t *frame, unsigned first_line, unsign
 	for (unsigned y = first_line; y < height; y += 2)
 	{
 		uint32_t *const dest = &frame[y * width];
+		unsigned const level = line_level(y);
 		for (unsigned x = 0; x < width; x++)
 		{
 			uint32_t video;
 			uint8_t key;
-			output_pixel(display_pixel(y, x), video, key);
+			output(y, x, level, video, key);
 			dest[x] = uint32_t(key) << 24 | (video & 0xffffff);
 		}
 	}

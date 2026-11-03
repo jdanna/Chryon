@@ -42,6 +42,9 @@ const ROOT = '/emu'
 const DISK = `${ROOT}/disk.chd`
 const NVRAM = `${ROOT}/nvram/maxine/nvram`
 const SNAP = `${ROOT}/snap/maxine`
+const VIDEO_INPUT = `${ROOT}/video-input.png`
+// Plenty for a 720x486 frame, and keeps a camera photo quick to encode
+const VIDEO_INPUT_MAX_SIDE = 1440
 const SAVE_INTERVAL_MS = 15000
 const SPEED_INTERVAL_MS = 2000
 const FIELDS_PER_SECOND = 60000 / 1001
@@ -282,6 +285,30 @@ class Machine {
 
   paste(text: string): void {
     this.module?.cwrap('maxine_paste', null, ['string'])(text)
+  }
+
+  /** The driver reads a PNG, so the browser decodes the file and hands it over as one. Null for none. */
+  async videoInput(file: File | null): Promise<void> {
+    const module = this.module
+    if (!module) return
+    const send = module.cwrap('maxine_video_input', null, ['string'])
+    if (!file) {
+      send('')
+      return
+    }
+    const picture = await createImageBitmap(file).catch(() => {
+      throw new Error(`${file.name} isn't a picture this browser can read.`)
+    })
+    const scale = Math.min(1, VIDEO_INPUT_MAX_SIDE / Math.max(picture.width, picture.height))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.round(picture.width * scale)
+    canvas.height = Math.round(picture.height * scale)
+    canvas.getContext('2d')!.drawImage(picture, 0, 0, canvas.width, canvas.height)
+    picture.close()
+    const png = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
+    if (!png) throw new Error(`Couldn't convert ${file.name}.`)
+    module.FS.writeFile(VIDEO_INPUT, new Uint8Array(await png.arrayBuffer()))
+    send(VIDEO_INPUT)
   }
 }
 

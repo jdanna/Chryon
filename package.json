@@ -1,6 +1,6 @@
 {
   "name": "maxine-studio",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "Convert TTF/OTF fonts to Chyron MAXINE machine fonts and upload them to the unit",
   "main": "./out/main/index.js",
   "author": "Joey D'Anna",
@@ -22,6 +22,7 @@
     "dist:linux": "electron-vite build && electron-builder --linux",
     "release": "node scripts/release.mjs",
     "build:web": "node scripts/build-web.mjs",
+    "deploy:web": "npm run build:web && npx wrangler pages deploy dist-web --project-name maxine-emulator --branch main",
     "preview:web": "node scripts/headless/web-server.mjs",
     "test:web": "node scripts/headless/web-boot.mjs"
   },

@@ -191,6 +191,8 @@ static constexpr int CURSOR_TIP_X = 5;
 static constexpr int CURSOR_TIP_Y = 7;
 static constexpr int CURSOR_IDLE_FIELDS = 8;
 static constexpr int PASTE_FIELDS = 2;
+static constexpr int REPEAT_DELAY_FIELDS = 30; // half a second, then a cursor key held down repeats
+static constexpr int REPEAT_FIELDS = 3;
 
 // Tablet units per Color Edit raster pixel and per Prompts pixel, measured from Logo Compose's
 // crosshair and arrow. Its button 2 flips between the two. The firmware ignores lines outside its
@@ -478,6 +480,8 @@ private:
 	uint32_t *m_capture_frame = nullptr; // set between a frame's two fields
 #endif
 	uint32_t m_panel_last[3]{};
+	int m_repeat_key = -1; // index into PANEL_KEYS
+	int m_repeat_wait = 0;
 	int m_shift = -1;
 	int m_held_shift = -1;
 	int m_key_bit = -1;
@@ -780,8 +784,29 @@ TIMER_CALLBACK_MEMBER(maxine_state::field_tick)
 		uint32_t const keys = m_panel[port]->read();
 		for (unsigned i = 0; i < 32; i++)
 			if (BIT(keys & ~m_panel_last[port], i) && unsigned(port) * 32 + i < std::size(PANEL_KEYS))
-				panel_key(PANEL_KEYS[port * 32 + i]);
+			{
+				uint16_t const code = PANEL_KEYS[port * 32 + i];
+				panel_key(code);
+				if (code >= 0x8c && code <= 0x8f)
+				{
+					m_repeat_key = port * 32 + i;
+					m_repeat_wait = REPEAT_DELAY_FIELDS;
+				}
+			}
 		m_panel_last[port] = keys;
+	}
+
+	// The last cursor key pressed repeats until it's let go. Going through panel_key means a shift held
+	// or latched applies to each repeat.
+	if (m_repeat_key >= 0)
+	{
+		if (!BIT(m_panel_last[m_repeat_key / 32], m_repeat_key % 32))
+			m_repeat_key = -1;
+		else if (--m_repeat_wait == 0)
+		{
+			panel_key(PANEL_KEYS[m_repeat_key]);
+			m_repeat_wait = REPEAT_FIELDS;
+		}
 	}
 
 	int const shift = active_shift();

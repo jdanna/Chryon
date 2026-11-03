@@ -15,6 +15,10 @@ resources/emulator/
 *.p12
 *.pem
 *.key
+# Wrangler's working folder and local secrets. Its login lives in the home folder, outside the repo.
+.wrangler/
+.dev.vars
+.dev.vars.*
 
 # Claude Code local settings
 .claude/

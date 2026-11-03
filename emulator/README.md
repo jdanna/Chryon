@@ -60,7 +60,8 @@ your work is kept. Delete that file to start over. The default has software opti
 
 Everything else is on the panel, such as ERASE, XFER, HOME and COLOR FONT. Its right side is laid out like a PC
 keyboard, with each key where its host key is. The SHIFT keys stay latched on the panel until clicked again, and apply
-to the arrow keys. Holding the host's Shift as well moves further. MODE SLCT opens the menu that exits to the Loader.
+to the arrow keys. Holding the host's Shift as well moves further. A held arrow key repeats after half a second,
+20 times a second. MODE SLCT opens the menu that exits to the Loader.
 
 A Mac laptop has no Print Screen, Scroll Lock, Pause or Insert, so those are panel keys there. Fn+arrows give Home, End,
 Page Up and Page Down, and Fn+Delete is Delete. Some desktops keep Print Screen for themselves, and the panel's DEL ROW
@@ -162,8 +163,9 @@ in `~/emsdk`, or `$EMSDK`. The first build takes about 20 minutes, in its own tr
 `MAXINE_SKIP_EMULATOR=1` to rebuild only the page. `npm run preview:web` serves it at http://127.0.0.1:8137/, and
 `npm run test:web` checks it in headless Chrome.
 
-To publish it on Cloudflare Pages, run `npx wrangler pages deploy dist-web --project-name <name>`. Cloudflare's own
-Git builds can't make this site, because they have no Emscripten and stop at 20 minutes.
+`npm run deploy:web` builds it and publishes it to production on Cloudflare Pages, as the `maxine-emulator` project
+whose production branch is `main`, which serves maxine.retrograde.tools. Cloudflare's own Git builds can't make this
+site, because they have no Emscripten and stop at 20 minutes.
 
 It has the screens, panel, keyboard, mouse, paste and PNG export, which downloads the pair. It has no network, telnet or
 capture. The machine only runs while its tab is showing, because browsers stop drawing hidden tabs.

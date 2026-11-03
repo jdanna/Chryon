@@ -115,7 +115,7 @@ for _name, _columns in CLUSTER_WIDTHS.items():
 
 
 # Keys whose label follows an output, by the output's value
-STATE_LABELS = {POINTER_SWITCH: [("MOUSE",), ("TABLET",)], SECOND_SCREEN: [("COLOR", "EDIT"), ("VIDEO",), ("KEY",)]}
+STATE_LABELS = {POINTER_SWITCH: [("MOUSE",), ("TABLET",), ("AUTO",)], SECOND_SCREEN: [("COLOR", "EDIT"), ("VIDEO",), ("KEY",)]}
 
 # Degrees to turn the arrow, which points right, on the cursor keys. They're shapes, not text, because layout text
 # uses each system's own font and not all of them have arrows.
@@ -190,7 +190,7 @@ def layout():
     return '\n'.join(out) + '\n'
 
 
-# The host pointer drives the firmware's arrow over Prompts, or its crosshair or the tablet over Color Edit. Coordinates
+# The host pointer drives the firmware's arrow over Prompts, or the tablet over Color Edit. Coordinates
 # over Prompts are its visible area in maxine.cpp, and over Color Edit are raster pixels with bit 30 set.
 SCRIPT = '''<script><![CDATA[
 local LEFT, TOP, WIDTH, HEIGHT = 92, 20, 520, 452

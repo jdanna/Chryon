@@ -272,7 +272,7 @@ baud word, then data bits and parity a nibble each, then stop bits. That's 19200
 data, parity and stop values on the Serial Communications screen are the II port's record at `$21c`, not
 the tablet's. `$fffc0411` is the tablet type: 1 SD510C, 2 SD420, 3 UD608, 4 UD1212, 5 Hitachi, 7–11
 Intuos, and 0 assumes Hitachi. PSOS's driver is `$a0000` and only starts when a program reads it, which
-Logo Compose does and the Loader and Message Compose don't.
+Logo Compose and Image Tools' Paint and Palette do, and the Loader and the rest of Message Compose don't.
 
 An SD510C sends 18-character ASCII lines, `#,XXXXX,YYYYY,BB` with CR LF, which the firmware scales by
 2802/3020. BB is the button code, and 99 means the pen is out of range. Logo Compose uses it for the
@@ -314,15 +314,25 @@ The emulator has no direct read of the position, so `update_mouse()` counts its 
 the mailbox only for a cursor blit followed by the clock's, and otherwise re-syncs by pushing the cursor
 into the top left limit, which gives a known position.
 
-**Image Tools' crosshair.** Paint and Palette (CNTL G, then F2 or F1) take the mouse off Prompts and draw a crosshair in
-the overlay, so it shows on Color Edit: a bar two rows tall with a 1-pixel gap at its centre column, 5 pixels left of the
-gap in Paint and 6 in Palette, 6 to the right, and a 1-pixel arm above and below the gap, 4 or 5 rows each way. Mouse
-deltas move it 1:1 in overlay pixels, packets of 120 included. The gap column runs from 8 to 727 and the bar's top row
-from 1 to 486, in both tools. Paint's X and Y readouts are the gap column − 8 and the top row + 22, so they're frame
-buffer coordinates if the overlay's column offset is 8, not the 10 the emulator uses. Right click leaves Paint, erases
-the crosshair and brings the arrow back on Prompts. Outlines (F4) keeps the arrow in its menu, and how it reaches a
-crosshair hasn't been found. Nothing else in the overlay has two rows of 5 lit, 1 clear and 6 lit, so the emulator
-looks for that each field rather than tracking the firmware's state, which also gives it the crosshair's real position.
+**Crosshairs.** Logo Compose and Image Tools' Paint and Palette (CNTL G, then F2 or F1) draw a crosshair in the overlay,
+so it shows on Color Edit: a bar two rows tall with a 1-pixel gap at its centre column and a 1-pixel arm above and below
+the gap. Logo Compose's has 4 pixels each side of the gap, 4 rows above and 3 below. Paint's has 5 left and 6 right,
+Palette's 6 and 6, both with 4 or 5 rows above and 4 below. Nothing else in the overlay has that shape, so the emulator
+looks for it each field, and the kind it finds picks the tablet scale.
+
+Image Tools' crosshair follows the tablet and the mouse. With the tablet, the gap's overlay column is −20.86 + 0.25671 X
+and the bar's top row 503.85 − 0.17271 Y, within a pixel at four points, the same in Paint and Palette. Mouse deltas
+move it 1:1 in overlay pixels, packets of 120 included. Either way the gap stays between columns 8 and 727 and the top
+row between 1 and 486. Lines outside that are clamped, not dropped,
+but Y = 3200 lands at the bottom, so the value wraps somewhere above 3010. One line with button 1 down paints one dab, and
+a run of them paints a stroke. Button 2, from either, leaves Paint, erases the crosshair and brings the arrow back on
+Prompts. Image Tools redraws the crosshair for each tablet line, so a line every field leaves it missing or half drawn
+in about a third of the fields. The emulator only sends a line when something changes or a button is held. Paint's X
+and Y readouts are the gap column − 8 and the top row + 22, so they're frame buffer coordinates if the overlay's column
+offset is 8, not the 10 the emulator uses. Swiping to an edge doesn't open anything in Paint. Outlines (F4) keeps the
+arrow in its menu, and how it reaches a crosshair hasn't been found.
+
+Logo Compose's menu mode ignores the mouse: its arrow on Prompts only follows the tablet.
 
 In Message Compose, CURSOR L moves one character and typing overstrikes. SHIFT ROW R (`$81`) moves the
 current row 1 pixel right, locked or unlocked. ERASE clears the whole message.

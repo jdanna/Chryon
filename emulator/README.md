@@ -79,16 +79,20 @@ Command-V pastes the clipboard as plain ASCII. On Windows, it's Right Alt+V, bec
 The mouse isn't captured. Over Prompts, the firmware's arrow follows your pointer and the buttons click
 there. It re-syncs when the pointer re-enters Prompts or the app regains focus.
 
-Image Tools' Paint and Palette (CNTL G, then F2 or F1) replace the arrow with a crosshair on Color Edit. While it's
-there, it follows your pointer over Color Edit instead, and Prompts is left alone. Left click or drag to paint or pick,
-and right click to go back to the arrow.
-
 ### Tablet
 
 A new machine is set up for the WACOM SD510C. If you've changed it, choose it again under Tablet Type in the
-Loader's Setup. Click MOUSE on the panel to switch to TABLET. It only works in Logo Compose. Left and right click
-are buttons 1 and 2. Button 2 flips between the crosshair on Color Edit and the arrow on Prompts, so keep your
-pointer over the screen in use.
+Loader's Setup. The panel's switch, right of SQUARE PIXEL, cycles through three settings:
+
+- AUTO, the default: your pointer is the tablet over Color Edit and the mouse over Prompts.
+- MOUSE: the mouse only, over Prompts.
+- TABLET: the tablet over Color Edit, and over Prompts too in Logo Compose, whose menus take the tablet.
+
+Left and right click are buttons 1 and 2, and holding a button holds it on the tablet, so you can paint strokes in Image
+Tools' Paint (CNTL G, F2). In Logo Compose a click is one press, and holding repeats it after half a second, as a puck
+does. The edge of Color Edit takes the crosshair to its limit, which can be off the screen. Button 2 in Logo Compose
+flips between the crosshair on Color Edit and an arrow on Prompts that only the tablet moves, so use TABLET for its
+menus, or press CNTL to get back to the crosshair. Button 2 in Paint leaves Paint.
 
 To draw an outline over Color Edit, press O, Return, Right arrow, Return, then P at each point and O to
 close it. Press `?` in Logo Compose for the other keys.

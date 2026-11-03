@@ -231,18 +231,27 @@ static constexpr double TABLET_MENU_Y_SCALE = 6.838;
 static constexpr double TABLET_MENU_Y_ORIGIN = 443.5;
 static constexpr offs_t TABLET_FRAME_FLAG = 0x30cc4;
 static constexpr int TABLET_CLICK_FIELDS = 12;
+static constexpr int TABLET_HOLD_FIELDS = 30; // a button held this long repeats in Logo Compose, as a real puck's does
+
+// Image Tools' Paint and Palette take the tablet too, with their own scale: overlay column = origin + X × scale,
+// for the crosshair's gap, and overlay row = origin − Y × scale for the top of its bar. They clamp to the
+// screen rather than dropping lines, and draw a stroke from a run of lines with a button down. They
+// redraw the crosshair for every line, so a steady stream makes it flicker, and they don't need one.
+static constexpr double TABLET_TOOLS_X_ORIGIN = -20.86;
+static constexpr double TABLET_TOOLS_X_SCALE = 0.25671;
+static constexpr double TABLET_TOOLS_Y_ORIGIN = 503.85;
+static constexpr double TABLET_TOOLS_Y_SCALE = 0.17271;
+static constexpr int TABLET_FAR = 3010; // past Image Tools' limits. Paint takes Y = 3200 as the bottom, so it wraps somewhere
+
+// The pointer this close to an edge of Color Edit pushes the crosshair to its limit there, which the
+// pointer can't otherwise reach: Paint's lies 22 lines below the screen, and Logo Compose's 6.
+static constexpr int TABLET_EDGE = 2;
+
+// The crosshair in the overlay is a bar two rows tall with a 1-pixel gap at its centre column, and a 1-pixel
+// arm above and below the gap. Logo Compose's has 4 pixels each side of the gap, and Image Tools' 5 or 6.
+static constexpr int CROSSHAIR_ARM = 4;
 
 static constexpr int CURSOR_HOME_MOVES = 5; // of -127, enough to reach the top left from anywhere
-
-// Image Tools' Paint and Palette swap the arrow for a crosshair in the overlay, on Color Edit. It's a
-// bar two rows tall with a gap at its centre column, 5 or 6 pixels each side, and a 1-pixel arm above
-// and below the gap. Mouse deltas move it 1:1 in overlay pixels, and these are the limits of the gap
-// column and the bar's top row. Firmware redraws can hide it for a moment, hence the grace fields.
-static constexpr int CROSSHAIR_LEFT = 8;
-static constexpr int CROSSHAIR_RIGHT = 727;
-static constexpr int CROSSHAIR_TOP = 1;
-static constexpr int CROSSHAIR_BOTTOM = 486;
-static constexpr int CROSSHAIR_GONE_FIELDS = 4;
 
 // From the SDL build in emulator/build.sh
 #if defined(__EMSCRIPTEN__)
@@ -402,11 +411,11 @@ private:
 	void update_tablet();
 	void mouse_move(int dx, int dy, int buttons);
 	void pointer_w(uint32_t data);
+	bool tablet_on() const;
 	void set_pointer_active();
 	void update_cursor_position();
-	bool find_crosshair(int &x, int &y) const;
+	int find_crosshair() const;
 	void update_crosshair();
-	void move_mouse_to(int &from_x, int &from_y, int x, int y);
 	void update_mouse();
 	int active_shift() const;
 	void panel_key(uint16_t code);
@@ -486,7 +495,14 @@ private:
 	std::deque<uint8_t> m_tablet_queue;
 	uint8_t m_tablet_byte = 0;
 	int m_tablet_bit = -1;
-	bool m_tablet_mode = false;
+	enum { POINTER_MOUSE, POINTER_TABLET, POINTER_AUTO, POINTER_MODES };
+	int m_pointer_mode = POINTER_AUTO;
+	enum { CROSSHAIR_NONE, CROSSHAIR_LOGO, CROSSHAIR_TOOLS };
+	int m_crosshair_seen = CROSSHAIR_LOGO; // the last kind seen, which picks the tablet's scale
+	bool m_tablet_was_on = false;
+	int m_tablet_held = 0;
+	int m_tablet_last_x = -1; // the last line sent in Image Tools
+	int m_tablet_last_y = -1;
 	enum { SHOW_COLOR_EDIT, SHOW_VIDEO, SHOW_KEY, SHOW_COUNT };
 	int m_second_screen = SHOW_COLOR_EDIT;
 	bool m_tablet_pen = false;
@@ -510,10 +526,6 @@ private:
 	int m_cursor_settle = 0;
 	int m_cursor_idle = 0;
 	int m_cursor_home = 0;
-	bool m_crosshair = false;
-	int m_crosshair_gone = 0;
-	int m_crosshair_x = 0; // where the moves sent so far put it, in overlay pixels
-	int m_crosshair_y = 0;
 	bool m_host_focus = false;
 	std::deque<uint8_t> m_paste_queue;
 	bool m_paste_held = false;
@@ -957,7 +969,7 @@ TIMER_CALLBACK_MEMBER(maxine_state::field_tick)
 	int const shift = active_shift();
 	for (int i = 0; i < 3; i++)
 		m_shift_lamps[i] = (shift == i) ? 1 : 0;
-	m_shift_lamps[3] = m_tablet_mode ? 1 : 0;
+	m_shift_lamps[3] = m_pointer_mode; // the switch's label
 	m_second_screen_label = m_second_screen;
 
 #if defined(__EMSCRIPTEN__)
@@ -1170,9 +1182,7 @@ void maxine_state::panel_key(uint16_t code)
 	}
 	else if (code == 0x103)
 	{
-		m_tablet_mode = !m_tablet_mode;
-		m_cursor_home = CURSOR_HOME_MOVES;
-		m_tablet_pen = false;
+		m_pointer_mode = (m_pointer_mode + 1) % POINTER_MODES;
 	}
 	else if (code >= 0x100)
 	{
@@ -1199,11 +1209,21 @@ void maxine_state::pointer_w(uint32_t data)
 	set_pointer_active();
 }
 
-// The host's pointer gives way to the firmware's over the screen that has it: Prompts for the arrow,
-// Color Edit for the crosshair, and either one with the tablet. Elsewhere it's left alone.
+// The panel's switch: MOUSE, TABLET, or AUTO, which is the tablet over Color Edit and the mouse over
+// Prompts. Off the window, AUTO stays as it was.
+bool maxine_state::tablet_on() const
+{
+	if (m_pointer_mode == POINTER_AUTO)
+		return m_pointer_present ? m_pointer_edit : m_tablet_was_on;
+	return m_pointer_mode == POINTER_TABLET;
+}
+
+// The host's pointer gives way to the firmware's over the screens that follow it: Prompts with the
+// mouse, Color Edit with the tablet, and Prompts too in Logo Compose, whose menus take the tablet.
 void maxine_state::set_pointer_active()
 {
-	bool const active = m_pointer_present && (m_tablet_mode || m_pointer_edit == m_crosshair);
+	bool const prompts = !tablet_on() || m_crosshair_seen == CROSSHAIR_LOGO;
+	bool const active = m_pointer_present && (m_pointer_edit ? tablet_on() : prompts);
 	if (active == m_pointer_active)
 		return;
 #if defined(__EMSCRIPTEN__)
@@ -1211,9 +1231,58 @@ void maxine_state::set_pointer_active()
 #else
 	SDL_ShowCursor(active ? 0 : 1);
 #endif
-	if (active && !m_crosshair)
+	if (active)
 		m_cursor_home = CURSOR_HOME_MOVES;
 	m_pointer_active = active;
+}
+
+// Which crosshair the overlay has, if any, which says how the program scales the tablet. It's looked for
+// rather than worked out from the firmware's state, and nothing else in the overlay looks like one.
+int maxine_state::find_crosshair() const
+{
+	auto const lit = [this] (int px, int row)
+	{
+		return px >= 0 && px < int(VRAM_ROW_WORDS) * 4 && BIT(m_vram[row * VRAM_ROW_WORDS + px / 4], (px & 3) * 4);
+	};
+	auto const run = [&lit] (int c, int row, int step)
+	{
+		int n = 0;
+		while (n < 8 && lit(c + step * (n + 1), row))
+			n++;
+		return n;
+	};
+
+	for (int row = 1; row < int(PROMPT_ROWS) - 2; row++)
+	{
+		uint16_t const *const words = &m_vram[row * VRAM_ROW_WORDS];
+		for (int word = 0; word < int(VRAM_ROW_WORDS); word++)
+		{
+			if (!(words[word] & 0x1111))
+				continue;
+			for (int c = word * 4 + 1; c <= word * 4 + 4; c++) // the gap, just right of a lit pixel
+			{
+				if (!lit(c - 1, row) || lit(c, row) || lit(c, row + 1))
+					continue;
+				int const left = run(c, row, -1), right = run(c, row, 1);
+				if (left < CROSSHAIR_ARM || right < CROSSHAIR_ARM || run(c, row + 1, -1) != left || run(c, row + 1, 1) != right)
+					continue;
+				if (!lit(c, row - 1) && !lit(c, row + 2))
+					continue;
+				if (left == 4 && right == 4)
+					return CROSSHAIR_LOGO;
+				if (left >= 5 && left <= 6 && right == 6)
+					return CROSSHAIR_TOOLS;
+			}
+		}
+	}
+	return CROSSHAIR_NONE;
+}
+
+void maxine_state::update_crosshair()
+{
+	int const kind = find_crosshair();
+	if (kind != CROSSHAIR_NONE)
+		m_crosshair_seen = kind;
 }
 
 // The driver only knows the firmware's cursor by counting what it sent, which fails when a program
@@ -1243,9 +1312,15 @@ void maxine_state::update_cursor_position()
 // A real tablet streams while the pen is near it, and Logo Compose only follows a stream. It maps a
 // window of the tablet, with Y up, to the crosshair on Color Edit or the arrow on Prompts, so the
 // pointer has to be over the one in use. It also takes every line with a button down as a new press,
-// so a click is one line, and the stream waits for PSOS to clear its frame flag before going on.
+// so a click is one line, and the stream waits for PSOS to clear its frame flag before going on. A
+// button held longer repeats, as a puck's would. Image Tools only has the crosshair, and draws while
+// a button is down, so there every line carries the buttons.
 void maxine_state::update_tablet()
 {
+	bool const tools = m_crosshair_seen == CROSSHAIR_TOOLS;
+	int const buttons = m_pointer_active ? m_pointer_buttons : 0;
+	m_tablet_held = buttons ? m_tablet_held + 1 : 0;
+
 	if (m_tablet_wait)
 	{
 		bool const pending = m_maincpu->space(AS_PROGRAM).read_dword(TABLET_FRAME_FLAG) != 0;
@@ -1254,120 +1329,73 @@ void maxine_state::update_tablet()
 		m_tablet_wait = 0;
 	}
 
-	int const buttons = m_pointer_active ? m_pointer_buttons : 0;
 	int const pressed = buttons & ~m_tablet_buttons;
+	bool const changed = buttons != m_tablet_buttons;
 	m_tablet_buttons = buttons;
+	int const sent = (tools || m_tablet_held > TABLET_HOLD_FIELDS) ? buttons : pressed;
+
+	// -1 or 1 where the pointer is at an edge of Color Edit, with Y up as the tablet has it
+	int const edge_x = !m_pointer_edit ? 0 : m_pointer_x < EDIT_LEFT + TABLET_EDGE ? -1 : m_pointer_x >= EDIT_RIGHT - TABLET_EDGE ? 1 : 0;
+	int const edge_y = !m_pointer_edit ? 0 : m_pointer_y < EDIT_TOP + TABLET_EDGE ? 1 : m_pointer_y >= EDIT_BOTTOM - TABLET_EDGE ? -1 : 0;
+	auto const pushed = [] (int value, int edge, int low, int high) { return edge < 0 ? low : edge > 0 ? high : value; };
 
 	if (m_pointer_active)
 	{
-		if (m_pointer_edit)
-			tablet_frame(std::clamp(int((m_pointer_x - TABLET_EDIT_X_ORIGIN) * TABLET_EDIT_X_SCALE), 0, TABLET_EDIT_X_MAX),
-					std::clamp(int((TABLET_EDIT_Y_ORIGIN - m_pointer_y) * TABLET_EDIT_Y_SCALE), TABLET_EDIT_Y_MIN, TABLET_EDIT_Y_MAX), pressed);
+		if (tools)
+		{
+			int const x = pushed(std::lround((m_pointer_x + OVERLAY_COLUMN_OFFSET - TABLET_TOOLS_X_ORIGIN) / TABLET_TOOLS_X_SCALE), edge_x, 0, TABLET_FAR);
+			int const y = pushed(std::lround((TABLET_TOOLS_Y_ORIGIN - (m_pointer_y + OVERLAY_ROW_OFFSET)) / TABLET_TOOLS_Y_SCALE), edge_y, 0, TABLET_FAR);
+			if (x != m_tablet_last_x || y != m_tablet_last_y || buttons || changed || !m_tablet_pen)
+				tablet_frame(x, y, sent);
+			m_tablet_last_x = x;
+			m_tablet_last_y = y;
+		}
+		else if (m_pointer_edit)
+			tablet_frame(pushed(std::clamp(int((m_pointer_x - TABLET_EDIT_X_ORIGIN) * TABLET_EDIT_X_SCALE), 0, TABLET_EDIT_X_MAX), edge_x, 0, TABLET_EDIT_X_MAX),
+					pushed(std::clamp(int((TABLET_EDIT_Y_ORIGIN - m_pointer_y) * TABLET_EDIT_Y_SCALE), TABLET_EDIT_Y_MIN, TABLET_EDIT_Y_MAX), edge_y, TABLET_EDIT_Y_MIN, TABLET_EDIT_Y_MAX), sent);
 		else
-			tablet_frame((m_pointer_x - PROMPT_LEFT + 7) * TABLET_MENU_X_SCALE, (TABLET_MENU_Y_ORIGIN - (m_pointer_y - PROMPT_TOP)) * TABLET_MENU_Y_SCALE, pressed);
+			tablet_frame((m_pointer_x - PROMPT_LEFT + 7) * TABLET_MENU_X_SCALE, (TABLET_MENU_Y_ORIGIN - (m_pointer_y - PROMPT_TOP)) * TABLET_MENU_Y_SCALE, sent);
 		m_tablet_pen = true;
-		if (pressed)
+		if (sent && !tools)
 			m_tablet_wait = TABLET_CLICK_FIELDS;
 	}
 	else if (m_tablet_pen)
 	{
-		tablet_frame(0, 0, 99);
+		if (!tools) // pen out of range, which in Logo Compose also means menu mode
+			tablet_frame(0, 0, 99);
 		m_tablet_pen = false;
-	}
-}
-
-// The crosshair's gap column and the bar's top row, the position the firmware reports, or false if
-// the overlay hasn't got one. Nothing else in the overlay has two rows of 5 pixels, a gap and 6.
-bool maxine_state::find_crosshair(int &x, int &y) const
-{
-	auto const lit = [this] (int px, int row) { return BIT(m_vram[row * VRAM_ROW_WORDS + px / 4], (px & 3) * 4); };
-	auto const bar = [&lit] (int c, int row)
-	{
-		for (int i = 1; i <= 6; i++)
-			if ((i <= 5 && !lit(c - i, row)) || !lit(c + i, row))
-				return false;
-		return !lit(c, row);
-	};
-
-	for (int row = 1; row < int(PROMPT_ROWS) - 2; row++)
-	{
-		uint16_t const *const words = &m_vram[row * VRAM_ROW_WORDS];
-		for (int word = 0; word < int(VRAM_ROW_WORDS) - 3; word++) // the bar's start, so c + 6 stays in the row
-		{
-			if (!(words[word] & 0x1111))
-				continue;
-			for (int px = word * 4; px < word * 4 + 4; px++)
-			{
-				int const c = px + 5;
-				if (lit(px, row) && bar(c, row) && bar(c, row + 1) && (lit(c, row - 1) || lit(c, row + 2)))
-				{
-					x = c;
-					y = row;
-					return true;
-				}
-			}
-		}
-	}
-	return false;
-}
-
-// Follows the crosshair. Moves already sent are trusted over the overlay, which lags them, until
-// the mouse has been still for a while.
-void maxine_state::update_crosshair()
-{
-	int x, y;
-	if (!find_crosshair(x, y))
-	{
-		if (m_crosshair && ++m_crosshair_gone >= CROSSHAIR_GONE_FIELDS)
-		{
-			m_crosshair = false;
-			m_cursor_home = CURSOR_HOME_MOVES; // the arrow comes back wherever the firmware left it
-		}
-		return;
-	}
-
-	m_crosshair_gone = 0;
-	if (!m_crosshair || m_cursor_idle >= CURSOR_IDLE_FIELDS)
-	{
-		m_crosshair_x = x;
-		m_crosshair_y = y;
-	}
-	m_crosshair = true;
-}
-
-// One mouse packet from the firmware's position towards x, y, which tracks what was sent. The
-// buttons only change once the pointer has arrived, so a click lands where it was aimed.
-void maxine_state::move_mouse_to(int &from_x, int &from_y, int x, int y)
-{
-	int const dx = m_pointer_active ? std::clamp(x - from_x, -120, 120) : 0;
-	int const dy = m_pointer_active ? std::clamp(y - from_y, -120, 120) : 0;
-	int const buttons = (dx || dy) ? m_mouse_last_buttons : (m_pointer_active ? m_pointer_buttons : 0);
-	if (dx || dy || buttons != m_mouse_last_buttons)
-	{
-		mouse_move(dx, dy, buttons);
-		from_x += dx;
-		from_y += dy;
-		m_mouse_last_buttons = buttons;
-		m_cursor_settle = 2;
-		m_cursor_idle = 0;
 	}
 }
 
 void maxine_state::update_mouse()
 {
-	if (m_tablet_mode)
+	update_crosshair();
+	bool const tablet = tablet_on();
+	if (tablet != m_tablet_was_on)
 	{
-		m_crosshair = false;
-		set_pointer_active();
+		// The firmware's arrow is wherever it was left, and the stream starts afresh
+		m_tablet_was_on = tablet;
+		m_cursor_home = CURSOR_HOME_MOVES;
+		if (tablet && m_mouse_last_buttons) // a mouse button held while crossing onto Color Edit
+		{
+			mouse_move(0, 0, 0);
+			m_mouse_last_buttons = 0;
+		}
+		m_tablet_pen = false;
+		m_tablet_buttons = 0;
+		m_tablet_wait = 0;
+		m_tablet_held = 0;
+	}
+	set_pointer_active();
+
+	if (tablet)
+	{
 		update_tablet();
 		return;
 	}
 
 	m_cursor_idle++;
-	update_crosshair();
-	set_pointer_active();
-	if (!m_crosshair)
-		update_cursor_position();
+	update_cursor_position();
 
 	if (m_cursor_settle)
 	{
@@ -1376,14 +1404,6 @@ void maxine_state::update_mouse()
 	}
 	if (!m_mouse_queue.empty())
 		return;
-
-	if (m_crosshair)
-	{
-		move_mouse_to(m_crosshair_x, m_crosshair_y,
-				std::clamp(m_pointer_x + OVERLAY_COLUMN_OFFSET, CROSSHAIR_LEFT, CROSSHAIR_RIGHT),
-				std::clamp(m_pointer_y + OVERLAY_ROW_OFFSET, CROSSHAIR_TOP, CROSSHAIR_BOTTOM));
-		return;
-	}
 
 	// Pushing the cursor into its top left stop puts it at a known position
 	if (m_pointer_active && m_cursor_home)
@@ -1398,9 +1418,21 @@ void maxine_state::update_mouse()
 		return;
 	}
 
-	move_mouse_to(m_cursor_x, m_cursor_y,
-			std::clamp(m_pointer_x + CURSOR_TIP_X, CURSOR_LEFT, CURSOR_RIGHT),
-			std::clamp(m_pointer_y + CURSOR_TIP_Y, CURSOR_TOP, CURSOR_BOTTOM));
+	int const x = std::clamp(m_pointer_x + CURSOR_TIP_X, CURSOR_LEFT, CURSOR_RIGHT);
+	int const y = std::clamp(m_pointer_y + CURSOR_TIP_Y, CURSOR_TOP, CURSOR_BOTTOM);
+	int const dx = m_pointer_active ? std::clamp(x - m_cursor_x, -120, 120) : 0;
+	int const dy = m_pointer_active ? std::clamp(y - m_cursor_y, -120, 120) : 0;
+	int const pointer_buttons = m_pointer_active ? m_pointer_buttons : 0;
+	int const buttons = (dx || dy) ? m_mouse_last_buttons : pointer_buttons; // click on arrival
+	if (dx || dy || buttons != m_mouse_last_buttons)
+	{
+		mouse_move(dx, dy, buttons);
+		m_cursor_x += dx;
+		m_cursor_y += dy;
+		m_mouse_last_buttons = buttons;
+		m_cursor_settle = 2;
+		m_cursor_idle = 0;
+	}
 }
 
 // Microsoft serial mouse on DUART channel B: 1200 baud 7N1, three bytes per report, with bit 6

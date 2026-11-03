@@ -440,8 +440,11 @@ python3 tools/phile.py ls emulator/roms/maxine-v11.01.img /SYSTEM/PROGRAMS
   needs `field:set_input_seq` to exercise the host path.
 - The mouse isn't captured: the layout script writes the host pointer to a test port and
   `update_mouse()` steers the firmware's cursor to it with serial mouse packets. See "Mouse cursor" in
-  `docs/hardware-map.md` for how it stays lined up. Image Tools' Paint and Palette swap the arrow for a crosshair on
-  Color Edit, which `find_crosshair()` spots in the overlay each field, so the pointer drives it over Color Edit instead.
+  `docs/hardware-map.md` for how it stays lined up. The panel's MOUSE / TABLET / AUTO switch (`m_pointer_mode`) picks
+  which one the pointer drives, and AUTO, the default, is the tablet over Color Edit and the mouse over Prompts, as the
+  user chose on 2026-11-03. `find_crosshair()` looks for Logo Compose's or Image Tools' crosshair in the overlay each
+  field to pick the tablet's scale. The pointer at the edge of Color Edit pushes the crosshair to its limit, because
+  some functions are reached by swiping to an edge.
 - The Video Input board at `$81300000` takes a picture from the app (`videoin <PNG path>` or `videoin off` on stdin)
   or the web page (`maxine_video_input`, a PNG in MEMFS), and writes it into the frame buffer while the firmware
   holds control bits 10 and 6 clear. Control bit 1 (ALT V, or leaving the menu live) composites it behind the

@@ -158,6 +158,15 @@ later record copies it to `length` rows.
 **With control bit 4 clear, each word is one pixel:** `$KKBBGGRR`, the key and a full colour that bypasses
 the palette, in the palette's byte order and already multiplied by the key. Message Compose's Palette tool (CNTL, P) draws its bars, swatch and
 colour chips this way, into the frame buffer rather than the overlay, so they reach Video and Key too.
+A pixel word goes to both banks, whichever the address names (emulator model). Recalling a page saved by Image Tools
+draws its picture this way, once, into bank B, while text pages are drawn into each bank in turn. Typing then redraws the
+row in bank A and flips to it, so a board that wrote one bank would lose the whole picture on the first key. Changing
+page clears it with record fills only, so it isn't a separate plane. The typed row still turns black across the full
+width, because Message Compose fills it with key 0 before drawing the text and never redraws the picture behind it.
+Text over a picture is a job for a second board: Message Compose's strings include "Two frame buffers used for text and
+graphics message" and "Extended frame buffer used for text and graphics message", and its help lists ALT READ ("Read
+Message into Background of Extended Frame Buffer"), ALT ERASE, ALT XFER and RCD A ("Record FG/BG Message"). The
+emulator has one plain board, where ALT READ acts as READ, and RCD of a typed-over picture page saves only the text.
 
 Message Compose redraws a row into the hidden bank, flips, and repeats on the other bank.
 

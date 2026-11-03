@@ -39,6 +39,7 @@
     key and a full colour that bypasses the palette, already multiplied by the
     key. The Palette tool's bars and chips are drawn this way, and so are Logo
     Compose's outlines. With bit 25 set as well, a word merges into the pixel.
+    A pixel word reaches both banks.
 
 ***************************************************************************/
 
@@ -175,15 +176,22 @@ void chyron_fb_device::put(uint32_t data)
 // strokes lines by overlapping 3x3 dabs of levels 7, $1f and $7f, with bit 25 set, and each would
 // erase its neighbour's brighter centre if it replaced the pixel. Those levels are 2^n-1, so OR and
 // max give the same result. Which the board does isn't known, and adding them would look brighter.
+//
+// The word goes to the same pixel in both banks. Message Compose draws a picture page from Image Tools
+// once, into one bank, though it draws text into each, and the next row it types flips to the other.
 void chyron_fb_device::put_pixel(uint32_t data)
 {
-	pixel &p = row(m_y)[m_x++ % ROW_PIXELS];
-	bool const merge = p.direct && (m_regs[REG_CONTROL] & CONTROL_MERGE);
-	p.color = (merge ? p.color : 0) | (swapendian_int32(data) >> 8);
-	p.key = (merge ? p.key : 0) | (data >> 24);
-	p.direct = 1;
-	p.under = 0;
-	p.blend = 0;
+	for (unsigned bank = 0; bank < 2; bank++)
+	{
+		pixel &p = row(m_y % (ROWS / 2) + bank * ROWS / 2)[m_x % ROW_PIXELS];
+		bool const merge = p.direct && (m_regs[REG_CONTROL] & CONTROL_MERGE);
+		p.color = (merge ? p.color : 0) | (swapendian_int32(data) >> 8);
+		p.key = (merge ? p.key : 0) | (data >> 24);
+		p.direct = 1;
+		p.under = 0;
+		p.blend = 0;
+	}
+	m_x++;
 }
 
 // In the form put_pixel takes, because the driver writes these straight back to the other bank

@@ -60,6 +60,17 @@ npm run dist:mac      # or dist:win, dist:linux
 
 `predist` fetches Python and builds the emulator, which uses Docker for Linux and Windows.
 
+To build the web version, install [emsdk](https://emscripten.org/docs/getting_started/downloads.html) in
+`~/emsdk` (or point `$EMSDK` at it) and run:
+
+```sh
+npm install
+npm run build:web     # static site in dist-web/; the first build takes about 20 minutes
+npm run preview:web   # serves it at http://127.0.0.1:8137/
+```
+
+Hosting details are in [emulator/README.md](emulator/README.md#web-version).
+
 ## More
 
 The file format and research notes are in [CLAUDE.md](CLAUDE.md), the test plan is in

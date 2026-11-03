@@ -229,19 +229,20 @@ static constexpr int TABLET_EDIT_Y_MAX = 3019;
 static constexpr double TABLET_MENU_X_SCALE = 5.051;
 static constexpr double TABLET_MENU_Y_SCALE = 6.838;
 static constexpr double TABLET_MENU_Y_ORIGIN = 443.5;
-static constexpr offs_t TABLET_FRAME_FLAG = 0x30cc4;
-static constexpr int TABLET_CLICK_FIELDS = 12;
-static constexpr int TABLET_HOLD_FIELDS = 30; // a button held this long repeats in Logo Compose, as a real puck's does
 
-// Image Tools' Paint and Palette take the tablet too, with their own scale: overlay column = origin + X × scale,
-// for the crosshair's gap, and overlay row = origin − Y × scale for the top of its bar. They clamp to the
-// screen rather than dropping lines, and draw a stroke from a run of lines with a button down. They
-// redraw the crosshair for every line, so a steady stream makes it flicker, and they don't need one.
+// Image Tools' Paint and Palette have their own scale: overlay column = origin + X × scale, for the
+// crosshair's gap, and overlay row = origin − Y × scale for the top of its bar. They clamp the crosshair
+// to columns 8 to 727 and rows 1 to 486 rather than dropping lines, and these are just past those limits.
 static constexpr double TABLET_TOOLS_X_ORIGIN = -20.86;
 static constexpr double TABLET_TOOLS_X_SCALE = 0.25671;
 static constexpr double TABLET_TOOLS_Y_ORIGIN = 503.85;
 static constexpr double TABLET_TOOLS_Y_SCALE = 0.17271;
-static constexpr int TABLET_FAR = 3010; // past Image Tools' limits. Paint takes Y = 3200 as the bottom, so it wraps somewhere
+static constexpr int TABLET_TOOLS_X_LOW = 100, TABLET_TOOLS_X_HIGH = 2930;
+static constexpr int TABLET_TOOLS_Y_LOW = 90, TABLET_TOOLS_Y_HIGH = 2930;
+
+// The far corner of the tablet, about where Logo Compose's window ends. Paint takes Y = 3200 as the bottom,
+// so values wrap somewhere past this.
+static constexpr int TABLET_MAX = 3010;
 
 // The pointer this close to an edge of Color Edit pushes the crosshair to its limit there, which the
 // pointer can't otherwise reach: Paint's lies 22 lines below the screen, and Logo Compose's 6.
@@ -409,6 +410,7 @@ private:
 #endif
 	void tablet_frame(int x, int y, int buttons);
 	void update_tablet();
+	void tablet_pen_out();
 	void mouse_move(int dx, int dy, int buttons);
 	void pointer_w(uint32_t data);
 	bool tablet_on() const;
@@ -500,15 +502,13 @@ private:
 	enum { CROSSHAIR_NONE, CROSSHAIR_LOGO, CROSSHAIR_TOOLS };
 	int m_crosshair_seen = CROSSHAIR_LOGO; // the last kind seen, which picks the tablet's scale
 	bool m_tablet_was_on = false;
-	int m_tablet_held = 0;
-	int m_tablet_last_x = -1; // the last line sent in Image Tools
-	int m_tablet_last_y = -1;
+	int m_tablet_x = 0; // the last line sent
+	int m_tablet_y = 0;
+	double m_pen_x[3] = {}, m_pen_y[3] = {}; // where the pointer put the pen in the last three fields, before the edges push it
 	enum { SHOW_COLOR_EDIT, SHOW_VIDEO, SHOW_KEY, SHOW_COUNT };
 	int m_second_screen = SHOW_COLOR_EDIT;
 	bool m_tablet_pen = false;
 	bool m_export_menu_added = false;
-	int m_tablet_buttons = 0;
-	int m_tablet_wait = 0;
 	std::deque<uint8_t> m_mouse_queue;
 	uint8_t m_mouse_byte = 0;
 	int m_mouse_bit = -1;
@@ -1309,62 +1309,83 @@ void maxine_state::update_cursor_position()
 	m_cursor_y = m_cursor_seen_y = y;
 }
 
-// A real tablet streams while the pen is near it, and Logo Compose only follows a stream. It maps a
-// window of the tablet, with Y up, to the crosshair on Color Edit or the arrow on Prompts, so the
-// pointer has to be over the one in use. It also takes every line with a button down as a new press,
-// so a click is one line, and the stream waits for PSOS to clear its frame flag before going on. A
-// button held longer repeats, as a puck's would. Image Tools only has the crosshair, and draws while
-// a button is down, so there every line carries the buttons.
+// The tablet is a WACOM SD510C in stream mode, and it behaves the same whatever is running. While the pen
+// is near it, it sends a line every field with the buttons that are down. PSOS sends the tablet no setup,
+// and Logo Compose only works with a stream, because it drops lines that arrive while it's busy. Image Tools
+// redraws its crosshair for every line, so it flickers, presumably as it does on a real unit. Lifting the
+// pen sends code 99 with the pen's position, carried on by its last move, and PSOS compares that with the
+// position at its previous read. A run of more than 50 units that ends off a side
+// of the tablet becomes -999, or 999 off the top or bottom, so swiping off Color Edit does what swiping a
+// pen off the tablet does: Image Tools opens the palette for -999, and leaves Paint for 999.
+//
+// Only where the pointer puts the pen depends on what's running, because each program maps the tablet to
+// the screen its own way, and the crosshair should sit under the pointer. Logo Compose ignores lines
+// outside its window, which would leave the crosshair stuck, so the pen is held inside it.
 void maxine_state::update_tablet()
 {
-	bool const tools = m_crosshair_seen == CROSSHAIR_TOOLS;
-	int const buttons = m_pointer_active ? m_pointer_buttons : 0;
-	m_tablet_held = buttons ? m_tablet_held + 1 : 0;
-
-	if (m_tablet_wait)
+	if (!m_pointer_active)
 	{
-		bool const pending = m_maincpu->space(AS_PROGRAM).read_dword(TABLET_FRAME_FLAG) != 0;
-		if (--m_tablet_wait > TABLET_CLICK_FIELDS - 3 || (m_tablet_wait && pending))
-			return;
-		m_tablet_wait = 0;
+		tablet_pen_out();
+		return;
 	}
 
-	int const pressed = buttons & ~m_tablet_buttons;
-	bool const changed = buttons != m_tablet_buttons;
-	m_tablet_buttons = buttons;
-	int const sent = (tools || m_tablet_held > TABLET_HOLD_FIELDS) ? buttons : pressed;
-
-	// -1 or 1 where the pointer is at an edge of Color Edit, with Y up as the tablet has it
-	int const edge_x = !m_pointer_edit ? 0 : m_pointer_x < EDIT_LEFT + TABLET_EDGE ? -1 : m_pointer_x >= EDIT_RIGHT - TABLET_EDGE ? 1 : 0;
-	int const edge_y = !m_pointer_edit ? 0 : m_pointer_y < EDIT_TOP + TABLET_EDGE ? 1 : m_pointer_y >= EDIT_BOTTOM - TABLET_EDGE ? -1 : 0;
-	auto const pushed = [] (int value, int edge, int low, int high) { return edge < 0 ? low : edge > 0 ? high : value; };
-
-	if (m_pointer_active)
+	double pen_x, pen_y;
+	int low_x = 0, high_x = TABLET_MAX, low_y = 0, high_y = TABLET_MAX;
+	if (m_crosshair_seen == CROSSHAIR_TOOLS)
 	{
-		if (tools)
-		{
-			int const x = pushed(std::lround((m_pointer_x + OVERLAY_COLUMN_OFFSET - TABLET_TOOLS_X_ORIGIN) / TABLET_TOOLS_X_SCALE), edge_x, 0, TABLET_FAR);
-			int const y = pushed(std::lround((TABLET_TOOLS_Y_ORIGIN - (m_pointer_y + OVERLAY_ROW_OFFSET)) / TABLET_TOOLS_Y_SCALE), edge_y, 0, TABLET_FAR);
-			if (x != m_tablet_last_x || y != m_tablet_last_y || buttons || changed || !m_tablet_pen)
-				tablet_frame(x, y, sent);
-			m_tablet_last_x = x;
-			m_tablet_last_y = y;
-		}
-		else if (m_pointer_edit)
-			tablet_frame(pushed(std::clamp(int((m_pointer_x - TABLET_EDIT_X_ORIGIN) * TABLET_EDIT_X_SCALE), 0, TABLET_EDIT_X_MAX), edge_x, 0, TABLET_EDIT_X_MAX),
-					pushed(std::clamp(int((TABLET_EDIT_Y_ORIGIN - m_pointer_y) * TABLET_EDIT_Y_SCALE), TABLET_EDIT_Y_MIN, TABLET_EDIT_Y_MAX), edge_y, TABLET_EDIT_Y_MIN, TABLET_EDIT_Y_MAX), sent);
-		else
-			tablet_frame((m_pointer_x - PROMPT_LEFT + 7) * TABLET_MENU_X_SCALE, (TABLET_MENU_Y_ORIGIN - (m_pointer_y - PROMPT_TOP)) * TABLET_MENU_Y_SCALE, sent);
-		m_tablet_pen = true;
-		if (sent && !tools)
-			m_tablet_wait = TABLET_CLICK_FIELDS;
+		pen_x = (m_pointer_x + OVERLAY_COLUMN_OFFSET - TABLET_TOOLS_X_ORIGIN) / TABLET_TOOLS_X_SCALE;
+		pen_y = (TABLET_TOOLS_Y_ORIGIN - (m_pointer_y + OVERLAY_ROW_OFFSET)) / TABLET_TOOLS_Y_SCALE;
+		low_x = TABLET_TOOLS_X_LOW;
+		high_x = TABLET_TOOLS_X_HIGH;
+		low_y = TABLET_TOOLS_Y_LOW;
+		high_y = TABLET_TOOLS_Y_HIGH;
 	}
-	else if (m_tablet_pen)
+	else if (m_pointer_edit)
 	{
-		if (!tools) // pen out of range, which in Logo Compose also means menu mode
-			tablet_frame(0, 0, 99);
-		m_tablet_pen = false;
+		pen_x = (m_pointer_x - TABLET_EDIT_X_ORIGIN) * TABLET_EDIT_X_SCALE;
+		pen_y = (TABLET_EDIT_Y_ORIGIN - m_pointer_y) * TABLET_EDIT_Y_SCALE;
+		high_x = TABLET_EDIT_X_MAX;
+		low_y = TABLET_EDIT_Y_MIN;
+		high_y = TABLET_EDIT_Y_MAX;
 	}
+	else
+	{
+		pen_x = (m_pointer_x - PROMPT_LEFT + 7) * TABLET_MENU_X_SCALE;
+		pen_y = (TABLET_MENU_Y_ORIGIN - (m_pointer_y - PROMPT_TOP)) * TABLET_MENU_Y_SCALE;
+	}
+	for (int i = 2; i > 0; i--)
+	{
+		m_pen_x[i] = m_tablet_pen ? m_pen_x[i - 1] : pen_x;
+		m_pen_y[i] = m_tablet_pen ? m_pen_y[i - 1] : pen_y;
+	}
+	m_pen_x[0] = pen_x;
+	m_pen_y[0] = pen_y;
+
+	// The pointer at an edge of Color Edit takes the pen just past the crosshair's limit there
+	int x = std::clamp(int(std::lround(pen_x)), low_x, high_x);
+	int y = std::clamp(int(std::lround(pen_y)), low_y, high_y);
+	if (m_pointer_edit)
+	{
+		if (m_pointer_x < EDIT_LEFT + TABLET_EDGE) x = low_x;
+		if (m_pointer_x >= EDIT_RIGHT - TABLET_EDGE) x = high_x;
+		if (m_pointer_y < EDIT_TOP + TABLET_EDGE) y = high_y;
+		if (m_pointer_y >= EDIT_BOTTOM - TABLET_EDGE) y = low_y;
+	}
+
+	tablet_frame(x, y, m_pointer_buttons);
+	m_tablet_pen = true;
+	m_tablet_x = x;
+	m_tablet_y = y;
+}
+
+// The host pointer moves at its own rate, which can be every other field, so the pen's speed is taken over two
+void maxine_state::tablet_pen_out()
+{
+	if (!m_tablet_pen)
+		return;
+	tablet_frame(std::clamp(int(std::lround(m_tablet_x + m_pen_x[0] - m_pen_x[2])), 0, TABLET_MAX),
+			std::clamp(int(std::lround(m_tablet_y + m_pen_y[0] - m_pen_y[2])), 0, TABLET_MAX), 99);
+	m_tablet_pen = false;
 }
 
 void maxine_state::update_mouse()
@@ -1373,7 +1394,7 @@ void maxine_state::update_mouse()
 	bool const tablet = tablet_on();
 	if (tablet != m_tablet_was_on)
 	{
-		// The firmware's arrow is wherever it was left, and the stream starts afresh
+		// The firmware's arrow is wherever it was left, and the pen leaves the tablet
 		m_tablet_was_on = tablet;
 		m_cursor_home = CURSOR_HOME_MOVES;
 		if (tablet && m_mouse_last_buttons) // a mouse button held while crossing onto Color Edit
@@ -1381,10 +1402,7 @@ void maxine_state::update_mouse()
 			mouse_move(0, 0, 0);
 			m_mouse_last_buttons = 0;
 		}
-		m_tablet_pen = false;
-		m_tablet_buttons = 0;
-		m_tablet_wait = 0;
-		m_tablet_held = 0;
+		tablet_pen_out();
 	}
 	set_pointer_active();
 

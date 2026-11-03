@@ -442,9 +442,12 @@ python3 tools/phile.py ls emulator/roms/maxine-v11.01.img /SYSTEM/PROGRAMS
   `update_mouse()` steers the firmware's cursor to it with serial mouse packets. See "Mouse cursor" in
   `docs/hardware-map.md` for how it stays lined up. The panel's MOUSE / TABLET / AUTO switch (`m_pointer_mode`) picks
   which one the pointer drives, and AUTO, the default, is the tablet over Color Edit and the mouse over Prompts, as the
-  user chose on 2026-11-03. `find_crosshair()` looks for Logo Compose's or Image Tools' crosshair in the overlay each
-  field to pick the tablet's scale. The pointer at the edge of Color Edit pushes the crosshair to its limit, because
-  some functions are reached by swiping to an edge.
+  user chose on 2026-11-03. The tablet is one device in every program, as the user asked on 2026-11-03: an SD510C in
+  stream mode, a line every field with the held buttons, and pen-out (99) at the pen's position carried on by its
+  motion, so PSOS decides what's a swipe, as on hardware. Only the scale is per program, so the crosshair sits under
+  the pointer: `find_crosshair()` looks for Logo Compose's or Image Tools' crosshair in the overlay each field to pick
+  it. The pointer at the edge of Color Edit pushes the crosshair to its limit. Don't add per-program button or stream
+  rules.
 - The Video Input board at `$81300000` takes a picture from the app (`videoin <PNG path>` or `videoin off` on stdin)
   or the web page (`maxine_video_input`, a PNG in MEMFS), and writes it into the frame buffer while the firmware
   holds control bits 10 and 6 clear. Control bit 1 (ALT V, or leaving the menu live) composites it behind the

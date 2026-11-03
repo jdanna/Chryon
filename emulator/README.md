@@ -88,11 +88,18 @@ Loader's Setup. The panel's switch, right of SQUARE PIXEL, cycles through three 
 - MOUSE: the mouse only, over Prompts.
 - TABLET: the tablet over Color Edit, and over Prompts too in Logo Compose, whose menus take the tablet.
 
-Left and right click are buttons 1 and 2, and holding a button holds it on the tablet, so you can paint strokes in Image
-Tools' Paint (CNTL G, F2). In Logo Compose a click is one press, and holding repeats it after half a second, as a puck
-does. The edge of Color Edit takes the crosshair to its limit, which can be off the screen. Button 2 in Logo Compose
-flips between the crosshair on Color Edit and an arrow on Prompts that only the tablet moves, so use TABLET for its
-menus, or press CNTL to get back to the crosshair. Button 2 in Paint leaves Paint.
+The tablet acts the same in every program, as a real one in stream mode does: while your pointer is over it, it sends
+the position every field, with the buttons you're holding. Only the scale changes, so that the crosshair stays under
+your pointer. Left and right click are buttons 1 and 2. Hold the left button to paint a stroke in Image Tools' Paint
+(CNTL G, F2). The edge of Color Edit takes the crosshair to its limit, which can be off the screen.
+
+Moving the pointer off Color Edit lifts the pen. Flick it off quickly and it's a swipe, as the firmware sees one: off
+the left or right side opens the palette in Paint, and off the top or bottom leaves Paint. Leaving slowly just lifts
+the pen. Paint's crosshair flickers while the pen is down, because Paint redraws it for every line.
+
+Button 2 in Logo Compose switches between the crosshair on Color Edit and an arrow on Prompts that only the tablet
+moves, so use TABLET for its menus. It switches again every few fields while held, so a click can switch twice. CNTL
+switches once. Button 2 in Paint leaves Paint.
 
 To draw an outline over Color Edit, press O, Return, Right arrow, Return, then P at each point and O to
 close it. Press `?` in Logo Compose for the other keys.

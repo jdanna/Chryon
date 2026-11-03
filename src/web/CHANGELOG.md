@@ -2,6 +2,7 @@
 - Fixed a picture recalled from Image Tools vanishing when you start typing over it
 - The MOUSE / TABLET switch has an AUTO setting, now the default: your pointer is the tablet over Color Edit and the mouse over Prompts
 - The tablet works in Image Tools' Paint and Palette, holding a button paints a stroke, and the crosshair reaches every edge
+- Flick the pointer off Color Edit to swipe the tablet: off a side opens Paint's palette, as on a real unit
 
 ## 1.6.2
 - Fixed Image Tools' Zoom / Pan, which scaled vertically only

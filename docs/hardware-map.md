@@ -280,9 +280,25 @@ crosshair on Color Edit, the Point X and Y readouts and buttons, and needs a con
 it. Button 2 flips between that draw mode and a menu mode with an arrow on Prompts. The crosshair's centre
 is at raster x = 50.66 + 0.20257 X, y = 591.09 − 0.18219 Y, within a pixel over 34 points, and the arrow's
 tip at Prompts x = 0.198 X − 7, y = 443.5 − 0.146 Y. Logo Compose drops a line with X above 3016 or Y
-outside 550 to 3019, and the crosshair stays where it was. Every line with a button down counts as a new press, about 20 a second, so the
-emulator sends one per click and waits for PSOS's frame flag at `$30cc4` to clear. Lifting the pen, line
-code 99, also drops it into menu mode.
+outside 550 to 3019, and the crosshair stays where it was. It drops lines that arrive while it's busy,
+so it only follows a stream.
+
+PSOS sends the tablet no setup, so its mode is set on the tablet itself, and everything here fits stream
+mode: a line for every sample while the pen is near, with the buttons that are down. PSOS sets the frame
+flag at `$30cc4` when a line arrives, and the read routine near PSOS file offset `$6000` parses it. That read
+keeps the previous position at `$30cb0`/`$30cb8`, and turns two cases into codes at offset 6 of the record:
+
+- Button 2 while the previous position is valid gives 999, then marks the position invalid, so a held
+  button 2 gives 999 on every other read.
+- Code 99, the pen leaving, more than 50 units from the previous position (after the 2802/3020 scaling)
+  gives −999 if the move was mostly sideways and ended below X 400 or above 2402, or 999 if it was
+  mostly up or down and ended below Y 400 or above 2402. That's a swipe off a side, or off the top or bottom.
+
+Image Tools opens the palette for −999 and leaves Paint for 999. Logo Compose switches between draw and
+menu mode for 999. It reads about every second field in the emulator, so a held button 2 switches it every
+four fields or so, and a click can switch it twice. CNTL does the same once. Earlier notes said lifting the
+pen also drops Logo Compose into menu mode, but that came from the emulator sending pen-out at 0, 0,
+which PSOS took as a swipe.
 
 Logo Compose's dispatch table at `$11b6e` gives the 12 puck buttons and their keyboard equivalents: 1 S
 select point, 2 CNTL, 3 A adjust point, 4 U control point, 5 C arc, 6 P add point, 7 O start or end
@@ -326,11 +342,11 @@ move it 1:1 in overlay pixels, packets of 120 included. Either way the gap stays
 row between 1 and 486. Lines outside that are clamped, not dropped,
 but Y = 3200 lands at the bottom, so the value wraps somewhere above 3010. One line with button 1 down paints one dab, and
 a run of them paints a stroke. Button 2, from either, leaves Paint, erases the crosshair and brings the arrow back on
-Prompts. Image Tools redraws the crosshair for each tablet line, so a line every field leaves it missing or half drawn
-in about a third of the fields. The emulator only sends a line when something changes or a button is held. Paint's X
-and Y readouts are the gap column − 8 and the top row + 22, so they're frame buffer coordinates if the overlay's column
-offset is 8, not the 10 the emulator uses. Swiping to an edge doesn't open anything in Paint. Outlines (F4) keeps the
-arrow in its menu, and how it reaches a crosshair hasn't been found.
+Prompts. A swipe off a side of the tablet opens the palette, and one off the top or bottom leaves Paint (see Tablet).
+Image Tools redraws the crosshair for each tablet line, so with a line every field it's missing or half drawn in about
+a third of the fields. Paint's X and Y readouts are the gap column − 8 and the top row + 22, so they're frame buffer
+coordinates if the overlay's column offset is 8, not the 10 the emulator uses. Outlines (F4) keeps the arrow in its
+menu, and how it reaches a crosshair hasn't been found.
 
 Logo Compose's menu mode ignores the mouse: its arrow on Prompts only follows the tablet.
 

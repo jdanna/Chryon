@@ -1,6 +1,7 @@
 # Dependencies / build output
 node_modules/
 dist/
+dist-web/
 out/
 resources/python/
 resources/emulator/

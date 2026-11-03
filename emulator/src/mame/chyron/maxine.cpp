@@ -48,7 +48,9 @@
 #include "osdepend.h"
 
 #include <filesystem>
+#if !defined(__EMSCRIPTEN__)
 #include <thread>
+#endif
 
 #if defined(__APPLE__)
 #include <objc/message.h>
@@ -62,7 +64,9 @@
 #endif
 
 #include "chyronfb.h"
+#if !defined(__EMSCRIPTEN__)
 #include "fieldcapture.h"
+#endif
 #include "maxine_keys.h"
 #include "mcchip.h"
 
@@ -71,12 +75,36 @@
 #include <bit>
 #include <deque>
 
+#if defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+#endif
+
 #define LOG_REGS (1U << 1)
 #define LOG_CONSOLE (1U << 2)
 #define LOG_HEARTBEAT (1U << 3)
 #define LOG_SCSI (1U << 4)
 #define VERBOSE (LOG_GENERAL | LOG_CONSOLE)
 #include "logmacro.h"
+
+#if defined(__EMSCRIPTEN__)
+
+// From the web page's paste event, because that's the only way a browser hands over the clipboard
+static std::string s_page_paste;
+
+extern "C" EMSCRIPTEN_KEEPALIVE void maxine_paste(char const *text)
+{
+	s_page_paste += text;
+}
+
+// Fields so far, which is how the page shows the machine's speed
+static uint32_t s_page_fields = 0;
+
+extern "C" EMSCRIPTEN_KEEPALIVE uint32_t maxine_fields()
+{
+	return s_page_fields;
+}
+
+#endif
 
 namespace {
 
@@ -98,6 +126,9 @@ static constexpr unsigned long ASFW_ANY = 0xffffffff;
 
 static constexpr unsigned RASTER_LINE_CLOCKS = 858; // at 13.5 MHz
 static constexpr unsigned FIRST_ACTIVE_LINE = 21;
+
+// The web build has no threads, sockets or stdin, so it has no capture and no command reader
+#if !defined(__EMSCRIPTEN__)
 
 // A port to send a capture to, or CAPTURE_STOP, until the machine picks it up
 static constexpr int CAPTURE_STOP = -1;
@@ -132,6 +163,8 @@ static void read_commands()
 	s_quit_requested = 1;
 #endif
 }
+
+#endif // !__EMSCRIPTEN__
 
 // Read from a PAL on the real board. Licensed files on the archive's disk image carry this one.
 static constexpr uint16_t SITE_ID = 0x2192;
@@ -179,7 +212,12 @@ static constexpr int TABLET_CLICK_FIELDS = 12;
 static constexpr int CURSOR_HOME_MOVES = 5; // of -127, enough to reach the top left from anywhere
 
 // From the SDL build in emulator/build.sh
+#if defined(__EMSCRIPTEN__)
+extern "C" bool SDL_ShowCursor();
+extern "C" bool SDL_HideCursor();
+#else
 extern "C" int SDL_ShowCursor(int toggle);
+#endif
 extern "C" void *SDL_GetKeyboardFocus();
 
 #if defined(__APPLE__)
@@ -311,7 +349,9 @@ private:
 	TIMER_CALLBACK_MEMBER(heartbeat);
 
 	TIMER_CALLBACK_MEMBER(field_tick);
+#if !defined(__EMSCRIPTEN__)
 	TIMER_CALLBACK_MEMBER(capture_field);
+#endif
 	TIMER_CALLBACK_MEMBER(key_bit);
 	TIMER_CALLBACK_MEMBER(mouse_bit);
 	TIMER_CALLBACK_MEMBER(tablet_bit);
@@ -319,7 +359,9 @@ private:
 	void host_key(uint8_t data);
 	void paste_text(std::string const &text);
 	void poll_host();
+#if !defined(__EMSCRIPTEN__)
 	void end_capture();
+#endif
 	void tablet_frame(int x, int y, int buttons);
 	void update_tablet();
 	void mouse_move(int dx, int dy, int buttons);
@@ -431,8 +473,10 @@ private:
 	unsigned m_export_count = 0;
 	bool m_export_held = false;
 	bool m_lower_field = false;
+#if !defined(__EMSCRIPTEN__)
 	std::unique_ptr<field_capture> m_capture;
 	uint32_t *m_capture_frame = nullptr; // set between a frame's two fields
+#endif
 	uint32_t m_panel_last[3]{};
 	int m_shift = -1;
 	int m_held_shift = -1;
@@ -643,12 +687,16 @@ void maxine_state::poll_host()
 	if (s_quit_requested)
 		machine().schedule_exit();
 
+#if !defined(__EMSCRIPTEN__)
 	int const command = s_capture_command.exchange(0);
 	if (command)
 		end_capture();
 	if (command > 0)
 		m_capture = std::make_unique<field_capture>(command);
+#endif
 }
+
+#if !defined(__EMSCRIPTEN__)
 
 // A frame with only its first field is dropped, so the app gets whole frames
 void maxine_state::end_capture()
@@ -682,19 +730,26 @@ TIMER_CALLBACK_MEMBER(maxine_state::capture_field)
 	}
 }
 
+#endif // !__EMSCRIPTEN__
+
 // The field interrupt also tells the firmware the video standard: it counts these for a
 // while, and fewer than 58 a second means 625 lines. Video board timing isn't modelled.
 TIMER_CALLBACK_MEMBER(maxine_state::field_tick)
 {
 	poll_host();
+#if defined(__EMSCRIPTEN__)
+	s_page_fields++;
+#endif
 
 	bim_input_w<2>(ASSERT_LINE);
 
 	// Parity is ours, because nothing the firmware does here tells the fields apart. Picture starts
 	// some lines after this interrupt, by when the firmware's handler has run.
 	m_lower_field = !m_lower_field;
+#if !defined(__EMSCRIPTEN__)
 	if (m_capture)
 		m_capture_timer->adjust(attotime::from_ticks(FIRST_ACTIVE_LINE * RASTER_LINE_CLOCKS, 13'500'000));
+#endif
 
 #if defined(__APPLE__)
 	if (!m_export_menu_added)
@@ -735,6 +790,13 @@ TIMER_CALLBACK_MEMBER(maxine_state::field_tick)
 	m_shift_lamps[3] = m_tablet_mode ? 1 : 0;
 	m_second_screen_label = m_second_screen;
 
+#if defined(__EMSCRIPTEN__)
+	if (!s_page_paste.empty())
+	{
+		paste_text(s_page_paste);
+		s_page_paste.clear();
+	}
+#else
 #if defined(_WIN32)
 	bool const paste_pressed = m_host_keys->read() == 6; // Right Alt and V, because Windows keeps Win+V
 #else
@@ -743,6 +805,7 @@ TIMER_CALLBACK_MEMBER(maxine_state::field_tick)
 	if (paste_pressed && !m_paste_held)
 		paste_text(osd_get_clipboard_text());
 	m_paste_held = paste_pressed;
+#endif
 	if (!m_paste_queue.empty() && ++m_paste_wait >= PASTE_FIELDS)
 	{
 		m_paste_wait = 0;
@@ -962,7 +1025,11 @@ void maxine_state::pointer_w(uint32_t data)
 	m_pointer_edit = BIT(data, 30);
 	bool const active = data != 0xffffffff && (m_tablet_mode || !m_pointer_edit);
 	if (active != m_pointer_active)
+#if defined(__EMSCRIPTEN__)
+		active ? SDL_HideCursor() : SDL_ShowCursor();
+#else
 		SDL_ShowCursor(active ? 0 : 1);
+#endif
 	if (active && !m_pointer_active)
 		m_cursor_home = CURSOR_HOME_MOVES;
 
@@ -1483,6 +1550,7 @@ void maxine_state::machine_start()
 	// For MAXINE! Studio's log field. error.log has no limit, and a stuck chip once wrote 11 GB of it.
 	if (std::getenv("MAXINE_LOG_STDOUT"))
 	{
+#if !defined(__EMSCRIPTEN__)
 		// A hard reset comes back through here, and the thread is still reading
 		static bool commands_started = false;
 		if (!commands_started)
@@ -1490,6 +1558,7 @@ void maxine_state::machine_start()
 			commands_started = true;
 			std::thread(read_commands).detach();
 		}
+#endif
 		// field_tick stops while the machine is paused, and this doesn't
 		machine().add_notifier(MACHINE_NOTIFY_FRAME, machine_notify_delegate(&maxine_state::poll_host, this));
 #if !defined(_WIN32)
@@ -1503,7 +1572,9 @@ void maxine_state::machine_start()
 	m_tablet_timer = timer_alloc(FUNC(maxine_state::tablet_bit), this);
 	m_field_timer = timer_alloc(FUNC(maxine_state::field_tick), this);
 	m_field_timer->adjust(attotime::from_ticks(1001, 60000), 0, attotime::from_ticks(1001, 60000));
+#if !defined(__EMSCRIPTEN__)
 	m_capture_timer = timer_alloc(FUNC(maxine_state::capture_field), this);
+#endif
 	m_heartbeat = timer_alloc(FUNC(maxine_state::heartbeat), this);
 	m_heartbeat->adjust(attotime::from_seconds(1), 0, attotime::from_seconds(1));
 }

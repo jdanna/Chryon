@@ -20,7 +20,10 @@
     "dist:win": "electron-vite build && electron-builder --win",
     "predist:linux": "node scripts/download-python.mjs linux x64 && node scripts/vendor-python-packages.mjs linux x64 && node scripts/vendor-emulator.mjs linux x64",
     "dist:linux": "electron-vite build && electron-builder --linux",
-    "release": "node scripts/release.mjs"
+    "release": "node scripts/release.mjs",
+    "build:web": "node scripts/build-web.mjs",
+    "preview:web": "node scripts/headless/web-server.mjs",
+    "test:web": "node scripts/headless/web-boot.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

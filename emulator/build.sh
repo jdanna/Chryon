@@ -31,6 +31,17 @@ if [ "${MAXINE_TARGET:-}" = windows ]; then
         LDOPTS=-Wl,--subsystem,windows "$@"
 fi
 
+# The web build goes through Emscripten, in its own tree (emulator/mame-web). MAME picks the asmjs target
+# from CC, which emmake sets. A wasm build is 32-bit, and has no sockets, threads or network devices to use.
+MAKE_TOOL=make
+if [ "${MAXINE_TARGET:-}" = web ]; then
+    command -v emcc >/dev/null || . "${EMSDK:-$HOME/emsdk}/emsdk_env.sh"
+    embuilder build sdl3 sdl3_ttf
+    apply_patches "$HERE"/patches/web/*.patch
+    MAKE_TOOL="emmake make"
+    set -- OSD=sdl3 USE_LIBSDL=0 USE_PCAP=0 TOOLS=0 PTR64=0 "$@"
+fi
+
 if ! grep -q '@source:chyron/maxine.cpp' "$MAME/src/mame/mame.lst"; then
     printf '\n@source:chyron/maxine.cpp\nmaxine\n' >> "$MAME/src/mame/mame.lst"
 fi
@@ -38,6 +49,7 @@ fi
 cd "$MAME"
 
 SOURCES=$(cd src/mame && ls chyron/*.cpp | paste -sd , -)
+[ "${MAXINE_TARGET:-}" = web ] && SOURCES=$(echo "$SOURCES" | sed 's/chyron.fieldcapture.cpp,//')
 BUILD_KEY="$SOURCES pcap nosound"
 REGENIE=0
 if [ "$BUILD_KEY" != "$(cat .maxine-sources 2>/dev/null)" ]; then
@@ -56,7 +68,7 @@ fi
 
 # The machine has no sound, and leaving the audio back ends out takes most of the libraries with them
 mame_make() {
-    make SUBTARGET=maxine SOURCES="$SOURCES" REGENIE=$REGENIE \
+    $MAKE_TOOL SUBTARGET=maxine SOURCES="$SOURCES" REGENIE=$REGENIE \
         USE_LIBSDL=1 USE_PCAP=1 USE_QTDEBUG=0 NOWERROR=1 PTR64=1 \
         NO_USE_PULSEAUDIO=1 NO_USE_PIPEWIRE=1 NO_USE_PORTAUDIO=1 NO_USE_MIDI=1 \
         TOOLS=1 "$@"

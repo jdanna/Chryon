@@ -2,11 +2,12 @@
 """
 Draws the app icon, the red "!" from the MAXINE! badge on Luminary's dark gradient
 tile, and writes resources/icon.png, icon.ico and icon.icns. Only needs rerunning
-if the design changes; icon.icns needs macOS's iconutil.
+if the design changes; icon.icns needs macOS's iconutil. With --web it writes only the
+web page's version instead, in Retrograde's teal and blue.
 
-    python3 scripts/make-icon.py
+    python3 scripts/make-icon.py [--web]
 """
-import os, subprocess, tempfile
+import os, subprocess, sys, tempfile
 import numpy as np
 from PIL import Image, ImageDraw
 
@@ -16,7 +17,9 @@ AA = 4                # edges are drawn this much larger, then reduced
 CORNER = 230          # same tile as Luminary's icon
 BAR = [(432, 192), (592, 192), (578, 576), (446, 576)]   # the badge's tapered stem
 DOT = (442, 661, 582, 831)
-MARK_TOP, MARK_BOTTOM = "#f0402f", "#c8301f"
+DESKTOP = ("#f0402f", "#c8301f", [(0, "#d0322a", 0.42), (0.55, "#8a2420", 0.16), (1, "#060e17", 0)])
+WEB = ("#14e0bc", "#1484dc", [(0, "#00d4aa", 0.30), (0.55, "#0a6a9a", 0.16), (1, "#060e17", 0)])
+WEB_SIZE = 256
 
 
 def rgb(color):
@@ -47,27 +50,35 @@ def shape_mask(draw):
     return np.asarray(img.resize((SIZE, SIZE), Image.BOX), np.float64) / 255
 
 
-def mark(base, top, bottom, mask):
-    """One part of the "!", with the red ramp running over that part's own height."""
+def mark(base, top, bottom, mask, first, last):
+    """One part of the "!", with the colour ramp running over that part's own height."""
     t = np.clip((np.arange(SIZE) + 0.5 - top) / (bottom - top), 0, 1)
-    colors = np.outer(1 - t, rgb(MARK_TOP)) + np.outer(t, rgb(MARK_BOTTOM))
+    colors = np.outer(1 - t, rgb(first)) + np.outer(t, rgb(last))
     return over(base, np.repeat(colors[:, None, :], SIZE, axis=1), mask)
 
 
-def main():
+def draw_icon(first, last, glow):
     y, x = np.mgrid[0:SIZE, 0:SIZE] + 0.5
     img, _ = ramp((x + y) / (2 * SIZE), [(0, "#202e3b", 1), (0.42, "#14222f", 1), (1, "#060e17", 1)])
     img = radial(img, 0.42, 0.50, 0.58, [(0, "#1a4a7a", 0.55), (1, "#060e17", 0)])
-    img = radial(img, 0.50, 0.50, 0.44, [(0, "#d0322a", 0.42), (0.55, "#8a2420", 0.16), (1, "#060e17", 0)])
+    img = radial(img, 0.50, 0.50, 0.44, glow)
 
     scaled = lambda points: [(px * AA, py * AA) for px, py in points]
-    img = mark(img, BAR[0][1], BAR[2][1], shape_mask(lambda d: d.polygon(scaled(BAR), fill=255)))
-    img = mark(img, DOT[1], DOT[3], shape_mask(lambda d: d.rectangle([v * AA for v in DOT], fill=255)))
+    img = mark(img, BAR[0][1], BAR[2][1], shape_mask(lambda d: d.polygon(scaled(BAR), fill=255)), first, last)
+    img = mark(img, DOT[1], DOT[3], shape_mask(lambda d: d.rectangle([v * AA for v in DOT], fill=255)), first, last)
 
     tile = shape_mask(lambda d: d.rounded_rectangle((0, 0, SIZE * AA - 1, SIZE * AA - 1), CORNER * AA, fill=255))
     rgba = np.dstack((img, tile * 255))
-    out = Image.fromarray(np.clip(np.rint(rgba), 0, 255).astype(np.uint8))
+    return Image.fromarray(np.clip(np.rint(rgba), 0, 255).astype(np.uint8))
 
+
+def main():
+    if "--web" in sys.argv:
+        out = draw_icon(*WEB).resize((WEB_SIZE, WEB_SIZE), Image.LANCZOS)
+        out.save(os.path.join(ROOT, "src", "web", "assets", "icon.png"))
+        return
+
+    out = draw_icon(*DESKTOP)
     res = os.path.join(ROOT, "resources")
     out.save(os.path.join(res, "icon.png"))
     out.save(os.path.join(res, "icon.ico"), sizes=[(s, s) for s in (16, 24, 32, 48, 64, 128, 256)])

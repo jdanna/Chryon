@@ -1,0 +1,39 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background: #080810;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 30px;
+  flex-shrink: 0;
+  padding: 0 var(--space-2);
+  background-color: #0f0f1a;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.name {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  margin-right: var(--space-1);
+}
+
+.status {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.speed {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}

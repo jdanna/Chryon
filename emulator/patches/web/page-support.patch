@@ -1,0 +1,90 @@
+diff --git a/scripts/genie.lua b/scripts/genie.lua
+index 86844d7f..0bf7139c 100644
+--- a/scripts/genie.lua
++++ b/scripts/genie.lua
+@@ -1130,20 +1130,16 @@ configuration { "asmjs" }
+ 		"-s USE_SDL=3",
+ 		"-s USE_SDL_TTF=3",
+ 		"-s DEFAULT_LIBRARY_FUNCS_TO_INCLUDE=\"['\\$$ERRNO_CODES']\"",
+-		"-s EXPORTED_FUNCTIONS=\"['_main', '_malloc', '__ZN15running_machine30emscripten_get_running_machineEv', '__ZN15running_machine17emscripten_get_uiEv', '__ZN15running_machine20emscripten_get_soundEv', '__ZN15mame_ui_manager12set_show_fpsEb', '__ZNK15mame_ui_manager8show_fpsEv', '__ZN13sound_manager4muteEbh', '__ZN15running_machine15emscripten_saveEPKc', '__ZN15running_machine15emscripten_loadEPKc', '__ZN15running_machine21emscripten_hard_resetEv', '__ZN15running_machine21emscripten_soft_resetEv', '__ZN15running_machine15emscripten_exitEv']\"",
+-		"-s EXPORTED_RUNTIME_METHODS=\"['cwrap']\"",
++		"-s EXPORTED_FUNCTIONS=\"['_main', '_malloc', '__ZN15running_machine30emscripten_get_running_machineEv', '__ZN15running_machine17emscripten_get_uiEv', '__ZN15running_machine20emscripten_get_soundEv', '__ZN15mame_ui_manager12set_show_fpsEb', '__ZNK15mame_ui_manager8show_fpsEv', '__ZN13sound_manager4muteEbh', '__ZN15running_machine15emscripten_saveEPKc', '__ZN15running_machine15emscripten_loadEPKc', '__ZN15running_machine21emscripten_hard_resetEv', '__ZN15running_machine21emscripten_soft_resetEv', '__ZN15running_machine15emscripten_exitEv', '__ZN15running_machine21emscripten_nvram_saveEv']\"",
++		"-s EXPORTED_RUNTIME_METHODS=\"['cwrap','FS','ENV']\"",
++		"-s FORCE_FILESYSTEM=1",
++		"-s ENVIRONMENT=web",
+ 		"-s ERROR_ON_UNDEFINED_SYMBOLS=0",
+ 		"-s STACK_SIZE=5MB",
+ 		"-s MAX_WEBGL_VERSION=2",
+ 		"-s EXCEPTION_CATCHING_ALLOWED=\"['_ZN15running_machine17start_all_devicesEv','_ZN8chd_file11open_commonEb','_ZN8chd_file13read_metadataEjjRNSt3__212basic_stringIcNS0_11char_traitsIcEENS0_9allocatorIcEEEE','_ZN8chd_file13read_metadataEjjRNSt3__26vectorIhNS0_9allocatorIhEEEE','_ZNK19netlist_mame_device19base_validity_checkER16validity_checker']\"",
+ 		"--pre-js " .. _MAKE.esc(MAME_DIR) .. "src/osd/modules/sound/js_sound.js",
+ 		"--post-js " .. _MAKE.esc(MAME_DIR) .. "scripts/resources/emscripten/emscripten_post.js",
+-		"--embed-file " .. _MAKE.esc(MAME_DIR) .. "bgfx/chains@bgfx/chains",
+-		"--embed-file " .. _MAKE.esc(MAME_DIR) .. "bgfx/effects@bgfx/effects",
+-		"--embed-file " .. _MAKE.esc(MAME_DIR) .. "bgfx/shaders/essl@bgfx/shaders/essl",
+-		"--embed-file " .. _MAKE.esc(MAME_DIR) .. "artwork/bgfx@artwork/bgfx",
+-		"--embed-file " .. _MAKE.esc(MAME_DIR) .. "artwork/lut-default.png@artwork/lut-default.png",
+-		"--embed-file " .. _MAKE.esc(MAME_DIR) .. "artwork/slot-mask.png@artwork/slot-mask.png",
+ 	}
+ 	if _OPTIONS["OPTIMIZE"]~=nil then
+ 		if _OPTIONS["OPTIMIZE"]=="3" then
+diff --git a/scripts/src/main.lua b/scripts/src/main.lua
+index 42ee03fb..217bc56f 100644
+--- a/scripts/src/main.lua
++++ b/scripts/src/main.lua
+@@ -84,7 +84,7 @@ end
+ 		targetextension ".exe"
+ 
+ 	configuration { "asmjs" }
+-		targetextension ".html"
++		targetextension ".js"
+ 
+ 	configuration { }
+ 
+diff --git a/src/emu/machine.cpp b/src/emu/machine.cpp
+index bf451940..ab69f750 100644
+--- a/src/emu/machine.cpp
++++ b/src/emu/machine.cpp
+@@ -1410,12 +1410,16 @@ void running_machine::emscripten_main_loop()
+ 		device_scheduler * scheduler;
+ 		scheduler = &(machine->scheduler());
+ 
+-		// Emscripten will call this function at 60Hz, so step the simulation
+-		// forward for the amount of time that has passed since the last frame
+-		const attotime frametime(0,HZ_TO_ATTOSECONDS(60));
++		// The browser calls this once per display refresh, which isn't always 60 Hz and stops in a
++		// hidden tab, so step by the time that really passed. Past the cap the machine falls behind
++		// instead of catching up, which keeps the page responding.
++		static double last_ms = emscripten_get_now();
++		double const now_ms = emscripten_get_now();
++		const attotime frametime(attotime::from_double(std::min(now_ms - last_ms, 50.0) / 1000.0));
+ 		const attotime stoptime(scheduler->time() + frametime);
++		last_ms = now_ms;
+ 
+-		while (!machine->m_paused && !machine->scheduled_event_pending() && scheduler->time() < stoptime)
++		while (!machine->m_paused && !machine->scheduled_event_pending() && scheduler->time() < stoptime && emscripten_get_now() - now_ms < 40.0)
+ 		{
+ 			scheduler->timeslice();
+ 			// handle save/load
+@@ -1470,6 +1474,10 @@ void running_machine::emscripten_hard_reset() {
+ void running_machine::emscripten_exit() {
+ 	emscripten_running_machine->schedule_exit();
+ }
++// The main loop never returns to run(), so a page has to ask for what it would save on the way out
++void running_machine::emscripten_nvram_save() {
++	emscripten_running_machine->nvram_save();
++}
+ void running_machine::emscripten_save(const char *name) {
+ 	emscripten_running_machine->schedule_save(name);
+ }
+diff --git a/src/emu/machine.h b/src/emu/machine.h
+index e7e9c433..60274f23 100644
+--- a/src/emu/machine.h
++++ b/src/emu/machine.h
+@@ -360,6 +360,7 @@ public:
+ 	static sound_manager * emscripten_get_sound();
+ 
+ 	static void emscripten_exit();
++	static void emscripten_nvram_save();
+ 	static void emscripten_hard_reset();
+ 	static void emscripten_soft_reset();
+ 	static void emscripten_save(const char *name);

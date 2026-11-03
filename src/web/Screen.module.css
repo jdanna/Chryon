@@ -1,0 +1,15 @@
+.frame {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  justify-content: center;
+  container-type: size;
+  background: #000;
+}
+
+.canvas {
+  display: block;
+  width: min(100cqw, 100cqh * 1131 / 632); /* the layout's view */
+  aspect-ratio: 1131 / 632;
+  outline: none;
+}

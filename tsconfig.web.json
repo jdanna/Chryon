@@ -1,5 +1,5 @@
 {
-  "include": ["src/renderer/src/**/*", "src/shared/**/*"],
+  "include": ["src/renderer/src/**/*", "src/shared/**/*", "src/web/**/*"],
   "compilerOptions": {
     "composite": true,
     "target": "ES2022",
@@ -13,6 +13,6 @@
     "noUnusedLocals": true,
     "types": [],
     "baseUrl": ".",
-    "paths": { "@shared/*": ["src/shared/*"] }
+    "paths": { "@shared/*": ["src/shared/*"], "@renderer/*": ["src/renderer/src/*"] }
   }
 }

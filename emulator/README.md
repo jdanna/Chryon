@@ -154,6 +154,30 @@ A capture refuses to start with under 1 GB free and stops itself under 500 MB, b
 finished. Capture is only in the app. A checkout needs `emulator/build-ffmpeg.sh` run once, and a packaged app includes
 ffmpeg.
 
+## Web version
+
+`npm run build:web` builds a static site in `dist-web/` that runs the emulator in a browser tab. It's the same driver,
+built with Emscripten, so changes to the driver reach it on the next build. It needs [emsdk](https://emscripten.org/docs/getting_started/downloads.html)
+in `~/emsdk`, or `$EMSDK`. The first build takes about 20 minutes, in its own tree at `emulator/mame-web`. Set
+`MAXINE_SKIP_EMULATOR=1` to rebuild only the page. `npm run preview:web` serves it at http://127.0.0.1:8137/, and
+`npm run test:web` checks it in headless Chrome.
+
+To publish it on Cloudflare Pages, run `npx wrangler pages deploy dist-web --project-name <name>`. Cloudflare's own
+Git builds can't make this site, because they have no Emscripten and stop at 20 minutes.
+
+It has the screens, panel, keyboard, mouse, paste and PNG export, which downloads the pair. It has no network, telnet or
+capture. The machine only runs while its tab is showing, because browsers stop drawing hidden tabs.
+
+Each browser keeps its own copy. The first visit downloads the disk, and the first time the machine writes to it, the
+whole disk goes into the browser's IndexedDB, with NVRAM. Later visits start from that copy. It's saved every 15 seconds
+when it has changed, when the tab is hidden and on Stop. Reset, or starting over from the startup page, deletes both.
+
+The site uses `emulator/roms/maxine-web.chd` if it exists, and `maxine-default.chd` if not. A site with a different image
+drops each browser's saved copy, because a saved disk can't carry over to a new image.
+
+Command stays with the browser, and so do shortcuts it won't release, such as Ctrl+W, Ctrl+T and Ctrl+N. Use the panel
+for CNTL with those letters. Paste with Command-V, or Ctrl+Shift+V on Windows and Linux.
+
 ## Limitations
 
 - Tested on macOS and Ubuntu 24.04. Windows 10 and 11 x64 are new.

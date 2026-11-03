@@ -328,6 +328,16 @@ npm run dist:mac | dist:win | dist:linux | release     # unsigned installers
   electron-builder's NSIS step hangs on its uninstaller stub, while `--win --dir` works. Installers come from the Mac.
   Tested on 2026-11-02 under Wine only: boot, log, a stop through stdin that saves NVRAM, and a real window. Nothing
   has run on real Windows yet: the app, the keys, UAC, TAP, the firewall rule or the installer.
+- **Web target:** `npm run build:web` runs `build.sh` with `MAXINE_TARGET=web` in `emulator/mame-web`, then Vite on `src/web/`, into
+  `dist-web/`, because electron-builder packages everything in `out/`. MAME's Emscripten build needs OSD `sdl3`, and only has
+  `-video accel` and bgfx: `soft` isn't registered there and silently gives no window. `patches/web/page-support.patch` paces the
+  main loop by real time, since it's called once per display refresh, and exports NVRAM saving, because that loop never returns
+  to `run()`. Driver code that needs threads, sockets or stdin goes behind `__EMSCRIPTEN__`, as capture does.
+- The web disk is a writable copy in Emscripten's MEMFS, saved whole to IndexedDB. Don't go back to a read-only disk with a MAME
+  diff: an uncompressed CHD counts as writeable however it's opened, and with `harddriv.cpp` patched to force a diff, the second
+  boot threw a C++ exception. `src/web` has its own startup page, styled after retrograde.tools, and a small top bar. Its teal icon comes from `make-icon.py --web`, and the desktop icon stays red. It doesn't use the Emulator tab or `window.maxine`.
+- Test the web page with `npm run test:web`. In headless Chrome a synthetic key can set `document.hidden`, which stops the
+  frames and so the machine, and looks like a firmware hang. `web-boot.mjs` has the flags that prevent it.
 - Headless screenshots time out on Linux once the hidden window has updated. Use `xvfb-run -a node
   scripts/headless/driver.mjs steps.json --show`, but that real window doesn't auto-answer dialogs.
 - Remote control isn't built. "Plan for MAXINE! Studio remote control" in `docs/remote-control-research.md` has the

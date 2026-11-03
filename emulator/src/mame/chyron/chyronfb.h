@@ -66,7 +66,8 @@ private:
 	static constexpr uint32_t CONTROL_VIDEO_BACKGROUND = 0x02; // the Video Input board's picture behind the graphics
 	static constexpr uint32_t CONTROL_VIDEO_INPUT = 0x08; // set in every value the Video Input menu uses, unlike the 0 at reset
 	static constexpr uint32_t CONTROL_FREEZE = 0x40; // clear with GRAPHICS clear and VIDEO_INPUT set: the Video Input board writes
-	static constexpr uint32_t CONTROL_GRAPHICS = 0x400; // set except while Message Compose's Video Input menu is open
+	static constexpr uint32_t CONTROL_GRAPHICS = 0x400; // set except while Message Compose's Video Input menu is open, or zoomed
+	static constexpr unsigned ZOOM_SHIFT = 11; // bits 15..11: horizontal zoom - 2, with GRAPHICS clear. Image Tools' Zoom / Pan goes 1, 3, 4, ... 14
 	static constexpr uint32_t CONTROL_MERGE = 0x02000000; // a pixel word merges into the pixel
 
 	// A pixel: palette address and key, and up to two layers underneath, the lowest first
@@ -88,6 +89,7 @@ private:
 	uint32_t get_pixel();
 	void copy_rows(uint32_t data);
 	uint32_t palette(unsigned index) const;
+	unsigned horizontal_zoom() const;
 	pixel const &display_pixel(int y, int x) const;
 	void output_pixel(pixel const &p, uint32_t &video, uint8_t &key) const;
 	unsigned line_level(int y) const;

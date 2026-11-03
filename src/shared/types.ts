@@ -23,6 +23,8 @@ export interface ConvertSettings {
   aspect: number
   spacing: number
   kern: boolean
+  /** Also write the outline master font Flash Font needs, as .<masterId> in the master folder. */
+  master: boolean
   /** Extra fonts above and below `scanlines`, with codes rising with size. */
   batchAbove: number
   batchBelow: number
@@ -65,8 +67,21 @@ export interface FontInfo {
   baseline_row?: number
 }
 
+/** A master (outline) font in the temp folder's master/ subfolder, named .<id>. */
+export interface MasterInfo {
+  path: string
+  file: string
+  size: number
+  mtime: number
+  name: string
+  id: string
+  glyphs: number
+  kern: number
+}
+
 export interface ConvertResult {
   font: FontInfo
+  master?: MasterInfo
   log: string[]
 }
 
@@ -136,10 +151,18 @@ export interface RemoteEntry {
   dir: boolean
 }
 
+/** A file on the unit: in /SYSTEM/MASTER when `master`, else in /MAXINE/MACHINE. */
+export interface RemoteFile {
+  name: string
+  master: boolean
+}
+
 export interface FtpListing {
   welcome: string
   cwd: string
   entries: RemoteEntry[]
+  /** The unit's /SYSTEM/MASTER folder, where Flash Font looks for outline fonts. */
+  masters: RemoteEntry[]
 }
 
 export interface UploadedFile {
@@ -150,6 +173,7 @@ export interface UploadedFile {
 /** Every write comes back with the unit's listing, so the tab never reconnects to refresh. */
 export interface UploadResult {
   done: UploadedFile[]
+  masters: UploadedFile[]
   listing: FtpListing
 }
 
@@ -172,7 +196,7 @@ export interface MaxineApi {
   /** The source outlines as a data: URL, laid out as the converter would. */
   sourcePreview(req: SourcePreviewRequest): Promise<SourcePreview>
   convert(req: ConvertRequest): Promise<ConvertResult>
-  outputs(): Promise<{ dir: string; files: FontInfo[] }>
+  outputs(): Promise<{ dir: string; files: FontInfo[]; masters: MasterInfo[] }>
   /** A data: URL of the decoded MAXINE file, or of the source it was converted from. */
   previewImage(file: string, kind: 'maxine' | 'source'): Promise<string | null>
   exportFont(file: string): Promise<string | null>
@@ -182,10 +206,11 @@ export interface MaxineApi {
   openTempFolder(): Promise<void>
   /** Connects on the first call; the connection then stays open until ftpDisconnect. */
   ftpList(cfg: FtpConfig): Promise<FtpListing>
-  /** Asks for confirmation in a native dialog. Resolves to null if declined. */
-  ftpUpload(cfg: FtpConfig, files: string[], replacing: string[]): Promise<UploadResult | null>
-  /** Asks for confirmation in a native dialog. Resolves to null if declined. */
-  ftpDelete(cfg: FtpConfig, name: string): Promise<FtpListing | null>
+  /** Asks for confirmation in a native dialog. Resolves to null if declined. `masters` are
+   *  .<id> names from the master folder, sent to /SYSTEM/MASTER after the fonts. */
+  ftpUpload(cfg: FtpConfig, files: string[], replacing: string[], masters: string[]): Promise<UploadResult | null>
+  /** Deletes a batch of 9xxx files. Asks for confirmation in a native dialog. Resolves to null if declined. */
+  ftpDelete(cfg: FtpConfig, items: RemoteFile[]): Promise<FtpListing | null>
   ftpDisconnect(): Promise<void>
   loadSettings(): Promise<Settings>
   saveSettings(settings: Settings): Promise<void>

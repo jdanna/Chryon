@@ -28,7 +28,9 @@ FONT_FILE = re.compile(r"^\.\d{4}$")     # the only names the MAXINE recognizes
 TEST_FONT = re.compile(r"^\.9\d{3}$")    # synthetic codes, the only fonts this app will delete
 
 FONT_FOLDER = "/MAXINE/MACHINE"
-LIST_LINE = re.compile(r"^([-dl])\S{9}\s+\d+\s+\S+\s+\S+\s+(\d+)\s+\S+\s+\S+\s+\S+\s+(.+)$")
+MASTER_FOLDER = "/SYSTEM/MASTER"         # outline fonts for Flash Font; the converter keeps its own in master/
+MASTER_SUBDIR = "master"
+LIST_LINE =re.compile(r"^([-dl])\S{9}\s+\d+\s+\S+\s+\S+\s+(\d+)\s+\S+\s+\S+\s+\S+\s+(.+)$")
 
 
 def send(obj):
@@ -88,9 +90,26 @@ def font_info(path):
     return info
 
 
+def master_info(path):
+    import maxine_master as mm
+    info = {"path": path, "file": os.path.basename(path), "size": os.path.getsize(path), "mtime": os.path.getmtime(path)}
+    try:
+        f = mm.load(path)
+        info.update(name=f.name, id=f"{f.master_id:04d}", glyphs=len(f.glyphs), kern=len(f.kerning))
+    except Exception:
+        info.update(name="?", id=os.path.basename(path)[1:], glyphs=0, kern=0)
+    return info
+
+
 def outputs(args):
     res = [font_info(p) for p in glob.glob(os.path.join(glob.escape(args["dir"]), ".[0-9][0-9][0-9][0-9]"))]
     res.sort(key=lambda f: -f["mtime"])
+    return res
+
+
+def masters(args):
+    res = [master_info(p) for p in glob.glob(os.path.join(glob.escape(args["dir"]), MASTER_SUBDIR, ".[0-9][0-9][0-9][0-9]"))]
+    res.sort(key=lambda f: f["file"])
     return res
 
 
@@ -114,7 +133,14 @@ def convert(args):
     mx.render_sheet(font, path + ".png", lines=ttf2maxine.specimen(lambda c: ord(c) in font.glyphs))
     ttf2maxine.source_sheet(args["ttf"], path + ".source.png", int(args["scanlines"]), float(args["aspect"]),
                             float(args["spacing"]), index=int(args.get("index", 0)), font=font)
-    return {"font": font_info(path), "log": logs}
+    res = {"font": font_info(path), "log": logs}
+    if args.get("master"):
+        import ttf2master
+        mpath, _ = ttf2master.convert_master(args["ttf"], str(args["master_id"]), name=args.get("name") or None,
+                                             out=os.path.join(args["out"], MASTER_SUBDIR), index=int(args.get("index", 0)),
+                                             kern=bool(args["kern"]), preview=True, log=logs.append)
+        res["master"] = master_info(mpath)
+    return res
 
 
 # ---- FTP.  The unit is a pSOS server ("UNIX Type: Chyron: pSOS").  It takes any login and
@@ -237,12 +263,25 @@ def parse_list_line(line):
     return {"name": m[3], "size": int(m[2]), "dir": m[1] == "d"} if m else None
 
 
-def listing(ftp):
+def folder_entries(ftp):
     lines = []
     ftp.retrlines("LIST", lines.append)
     entries = [e for e in map(parse_list_line, lines) if e]
     entries.sort(key=lambda e: (not FONT_FILE.match(e["name"]), e["name"]))
-    return {"welcome": ftp.getwelcome(), "cwd": LINK.cwd, "entries": entries}
+    return entries
+
+
+def listing(ftp):
+    """The font folder and the master folder, with the connection left in the font folder."""
+    entries = folder_entries(ftp)
+    try:
+        ftp.cwd(MASTER_FOLDER)
+        masters = folder_entries(ftp)
+    except ftplib.error_perm:
+        masters = []
+    finally:
+        ftp.cwd(FONT_FOLDER)
+    return {"welcome": ftp.getwelcome(), "cwd": LINK.cwd, "entries": entries, "masters": masters}
 
 
 def ftp_list(args):
@@ -257,43 +296,71 @@ def ftp_upload(args):
     in 1 KB writes to keep bursts small, and `pause` seconds go by after each file, with a
     countdown for the UI."""
     done = []
+    masters_done = []
     pause = float(args.get("pause") or 0)
     rate = min(float(args.get("speed") or MAX_MBIT), MAX_MBIT) * 1e6 / 8     # bytes per second
+
+    def store(ftp, p):
+        name = os.path.basename(p); total = os.path.getsize(p); sent = 0
+        started = time.monotonic()
+        def progress(block):
+            nonlocal sent
+            sent += len(block)
+            if sent % 8192 == 0 or sent == total:
+                send({"event": "upload", "name": name, "sent": sent, "total": total})
+            if sent % 65536 == 0 or sent == total:
+                trace(f"  {name}: {sent} of {total} bytes written")
+            wait = started + sent / rate - time.monotonic()
+            if wait > 0:
+                time.sleep(wait)
+        with open(p, "rb") as fh:
+            ftp.storbinary("STOR " + name, fh, 1024, progress)
+        left = pause
+        while left > 0:
+            send({"event": "upload", "name": name, "sent": total, "total": total, "wait": round(left)})
+            time.sleep(min(left, 1)); left -= 1
+        return {"name": name, "size": total}
+
     with LINK.session(args) as ftp:
-        for i, p in enumerate(args["paths"]):
-            name = os.path.basename(p); total = os.path.getsize(p); sent = 0
-            started = time.monotonic()
-            def progress(block):
-                nonlocal sent
-                sent += len(block)
-                if sent % 8192 == 0 or sent == total:
-                    send({"event": "upload", "name": name, "sent": sent, "total": total})
-                if sent % 65536 == 0 or sent == total:
-                    trace(f"  {name}: {sent} of {total} bytes written")
-                wait = started + sent / rate - time.monotonic()
-                if wait > 0:
-                    time.sleep(wait)
-            with open(p, "rb") as fh:
-                ftp.storbinary("STOR " + name, fh, 1024, progress)
-            done.append({"name": name, "size": total})
-            left = pause
-            while left > 0:
-                send({"event": "upload", "name": name, "sent": total, "total": total, "wait": round(left)})
-                time.sleep(min(left, 1)); left -= 1
+        for p in args["paths"]:
+            done.append(store(ftp, p))
+        if args.get("masters"):
+            ftp.cwd(MASTER_FOLDER)
+            try:
+                for p in args["masters"]:
+                    masters_done.append(store(ftp, p))
+            finally:
+                ftp.cwd(FONT_FOLDER)
         after = listing(ftp)
-    sizes = {e["name"]: e["size"] for e in after["entries"]}
-    short = [f"{d['name']} ({sizes.get(d['name'])} of {d['size']} bytes)" for d in done if sizes.get(d["name"]) != d["size"]]
+    short = []
+    for sent_list, entries in ((done, after["entries"]), (masters_done, after["masters"])):
+        sizes = {e["name"]: e["size"] for e in entries}
+        short += [f"{d['name']} ({sizes.get(d['name'])} of {d['size']} bytes)" for d in sent_list if sizes.get(d["name"]) != d["size"]]
     if short:
         raise IOError("The unit has the wrong size for " + ", ".join(short) + ". Don't load them.")
-    return {"done": done, "listing": after}
+    return {"done": done, "masters": masters_done, "listing": after}
 
 
 def ftp_delete(args):
-    name = args["name"]
-    if not TEST_FONT.match(name):      # never touch the unit's original fonts
-        raise ValueError("Only 9xxx test fonts can be deleted from the unit: " + name)
+    """Delete a batch of 9xxx files, `items` being [{"name", "master"}], each in its folder,
+    paced like every other command."""
+    items = args["items"]
+    bad = [i["name"] for i in items if not TEST_FONT.match(i["name"])]
+    if bad:      # never touch the unit's original fonts
+        raise ValueError("Only 9xxx test fonts can be deleted from the unit: " + ", ".join(bad))
     with LINK.session(args) as ftp:
-        ftp.delete(name)
+        for folder, master in ((FONT_FOLDER, False), (MASTER_FOLDER, True)):
+            names = [i["name"] for i in items if bool(i.get("master")) == master]
+            if not names:
+                continue
+            if master:
+                ftp.cwd(folder)
+            try:
+                for name in names:
+                    ftp.delete(name)
+            finally:
+                if master:
+                    ftp.cwd(FONT_FOLDER)
         return listing(ftp)
 
 
@@ -303,7 +370,7 @@ def ftp_disconnect(args):
     return True
 
 
-COMMANDS = {"system_fonts": system_fonts, "faces": faces, "outputs": outputs, "source_preview": source_preview, "convert": convert,
+COMMANDS = {"system_fonts": system_fonts, "faces": faces, "outputs": outputs, "masters": masters, "source_preview": source_preview, "convert": convert,
             "ftp_list": ftp_list, "ftp_upload": ftp_upload, "ftp_delete": ftp_delete, "ftp_disconnect": ftp_disconnect}
 
 

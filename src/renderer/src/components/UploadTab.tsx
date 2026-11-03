@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { FontInfo, FtpConfig, FtpListing, RemoteEntry, UploadProgress } from '@shared/types'
+import type { FontInfo, FtpConfig, FtpListing, MasterInfo, RemoteEntry, RemoteFile, UploadProgress } from '@shared/types'
 import { errorMessage, formatSize } from '../format'
 import FontPreview from './FontPreview'
 import type { LogKind } from './LogPanel'
@@ -42,6 +42,8 @@ interface Props {
   settings: FtpConfig
   onSettings(settings: FtpConfig): void
   fonts: FontInfo[]
+  /** Master fonts in the temp folder's master/ subfolder, by the id their fonts name. */
+  masters: MasterInfo[]
   tempDir: string
   refreshFonts(): Promise<FontInfo[]>
   current: string | null
@@ -51,23 +53,28 @@ interface Props {
 }
 
 export default function UploadTab(props: Props): JSX.Element {
-  const { settings, onSettings, fonts, tempDir, refreshFonts, current, onCurrent, log, setStatus } = props
+  const { settings, onSettings, fonts, masters, tempDir, refreshFonts, current, onCurrent, log, setStatus } = props
   const [listing, setListing] = useState<FtpListing | null>(null)
   const [connecting, setConnecting] = useState(false)
   const [selected, setSelected] = useState<string[]>([])
   const [progress, setProgress] = useState<UploadProgress | null>(null)
   const [uploading, setUploading] = useState(false)
   const [expanded, setExpanded] = useState<string[]>([])
+  const [remoteSelected, setRemoteSelected] = useState<RemoteFile[]>([])
 
   const set = <K extends keyof FtpConfig>(key: K, value: FtpConfig[K]): void => onSettings({ ...settings, [key]: value })
 
   useEffect(() => api.onUploadProgress(setProgress), [])
 
   const remote = useMemo(() => new Map((listing?.entries ?? []).map((e) => [e.name, e])), [listing])
+  const remoteMasters = useMemo(() => new Map((listing?.masters ?? []).map((e) => [e.name, e])), [listing])
+  const localMasters = useMemo(() => new Map(masters.map((m) => [m.file, m])), [masters])
   const shown = fonts.find((f) => f.file === current) ?? null
   // With nothing ticked, the highlighted font is the one to send
   const ticked = selected.filter((file) => fonts.some((f) => f.file === file))
   const toUpload = ticked.length ? ticked : shown ? [shown.file] : []
+  // A font's master goes with it, so Flash Font can scale it on the unit
+  const mastersToUpload = [...new Set(toUpload.map((file) => `.${fonts.find((f) => f.file === file)?.master ?? ''}`))].filter((m) => localMasters.has(m))
   const allTicked = fonts.length > 0 && ticked.length === fonts.length
   const groups = useMemo(() => groupFonts(fonts), [fonts])
 
@@ -101,10 +108,14 @@ export default function UploadTab(props: Props): JSX.Element {
     setUploading(true)
     setStatus('Uploading…')
     try {
-      const result = await api.ftpUpload(settings, toUpload, toUpload.filter((file) => remote.has(file)))
+      const replacing = [...toUpload.filter((file) => remote.has(file)), ...mastersToUpload.filter((file) => remoteMasters.has(file))]
+      const result = await api.ftpUpload(settings, toUpload, replacing, mastersToUpload)
       if (result) {
         for (const f of result.done) {
           log(`Uploaded ${f.name} (${f.size} bytes, size confirmed on the unit)`, 'ok')
+        }
+        for (const f of result.masters) {
+          log(`Uploaded master font ${f.name} to /SYSTEM/MASTER (${f.size} bytes, size confirmed on the unit)`, 'ok')
         }
         setListing(result.listing)
         setSelected([])
@@ -121,17 +132,29 @@ export default function UploadTab(props: Props): JSX.Element {
     setUploading(false)
   }
 
-  const deleteRemote = async (entry: RemoteEntry): Promise<void> => {
+  const deleteRemote = async (items: RemoteFile[]): Promise<void> => {
     try {
-      const result = await api.ftpDelete(settings, entry.name)
+      const result = await api.ftpDelete(settings, items)
       if (result) {
-        log(`Deleted ${entry.name} from ${settings.host}`, 'ok')
+        log(`Deleted ${items.map((i) => i.name).join(', ')} from ${settings.host}`, 'ok')
         setListing(result)
+        setRemoteSelected([])
       }
     } catch (err) {
       log(`Delete failed: ${errorMessage(err)}`, 'error')
     }
   }
+
+  // Only 9xxx test files can be ticked on the unit; the originals stay
+  const deletable: RemoteFile[] = [
+    ...(listing?.entries ?? []).filter((e) => TEST_FONT.test(e.name)).map((e) => ({ name: e.name, master: false })),
+    ...(listing?.masters ?? []).filter((e) => TEST_FONT.test(e.name)).map((e) => ({ name: e.name, master: true }))
+  ]
+  const sameFile = (a: RemoteFile, b: RemoteFile): boolean => a.name === b.name && a.master === b.master
+  const remoteTicked = remoteSelected.filter((r) => deletable.some((d) => sameFile(d, r)))
+  const isRemoteTicked = (f: RemoteFile): boolean => remoteTicked.some((r) => sameFile(r, f))
+  const tickRemote = (f: RemoteFile, on: boolean): void =>
+    setRemoteSelected((s) => (on ? [...s.filter((r) => !sameFile(r, f)), f] : s.filter((r) => !sameFile(r, f))))
 
   const tick = (files: string[], on: boolean): void => {
     setSelected((s) => (on ? [...new Set([...s, ...files])] : s.filter((f) => !files.includes(f))))
@@ -260,6 +283,14 @@ export default function UploadTab(props: Props): JSX.Element {
                     <span className={styles.name}>{group.name}</span>
                     <span className={styles.desc}>{groupSummary(group)}</span>
                   </span>
+                  {localMasters.has(`.${group.master}`) && (
+                    <span
+                      className={remoteMasters.has(`.${group.master}`) ? styles.onUnit : styles.master}
+                      title={`Master font .${group.master} for Flash Font, ${remoteMasters.has(`.${group.master}`) ? 'on the unit' : 'uploads with these fonts'}`}
+                    >
+                      {remoteMasters.has(`.${group.master}`) ? 'Master on unit' : 'Master'}
+                    </span>
+                  )}
                   {onUnit > 0 && <span className={styles.onUnit}>{onUnit === files.length ? 'On unit' : `${onUnit} of ${files.length} on unit`}</span>}
                   <span className={styles.size}>{formatSize(total)}</span>
                 </div>
@@ -298,6 +329,7 @@ export default function UploadTab(props: Props): JSX.Element {
         <div className={styles.actionBar}>
           <button className={ui.btnPrimary} disabled={!toUpload.length || uploading || !listing} onClick={upload}>
             {toUpload.length > 1 ? `Upload ${toUpload.length} fonts` : `Upload ${toUpload[0] ?? ''}`}
+            {mastersToUpload.length > 0 && ` + master`}
           </button>
           {progress ? (
             <>
@@ -318,25 +350,72 @@ export default function UploadTab(props: Props): JSX.Element {
           On the MAXINE!
           {listing && <span className={ui.sectionMeta}>{listing.cwd}</span>}
         </div>
+        {listing && (
+          <div className={styles.listBar}>
+            <label className={ui.check}>
+              <TickBox
+                checked={deletable.length > 0 && remoteTicked.length === deletable.length}
+                partial={remoteTicked.length > 0}
+                disabled={deletable.length === 0}
+                onChange={(on) => setRemoteSelected(on ? deletable : [])}
+              />
+              Select all 9xxx
+            </label>
+            {remoteTicked.length > 0 && <span className={styles.selectedCount}>{remoteTicked.length} selected</span>}
+            <span className={ui.spacer} />
+            <button className={ui.btnSmall} disabled={remoteTicked.length === 0 || uploading} onClick={() => deleteRemote(remoteTicked)}>
+              Delete selected
+            </button>
+          </div>
+        )}
         <div className={styles.table}>
           {!listing && <div className={ui.empty}>Not connected.</div>}
           {listing && listing.entries.length === 0 && <div className={ui.empty}>This folder is empty.</div>}
           {listing?.entries.map((e) => (
-            <div key={e.name} className={FONT_NAME.test(e.name) ? styles.remoteRow : styles.remoteRowDim}>
-              <span className={`${ui.mono} ${styles.remoteName}`}>
-                {e.name}
-                {e.dir ? '/' : ''}
-              </span>
-              <span className={styles.size}>{formatSize(e.size)}</span>
-              {TEST_FONT.test(e.name) && (
-                <button className={ui.btnSmall} onClick={() => deleteRemote(e)}>
-                  Delete
-                </button>
-              )}
-            </div>
+            <RemoteRow key={e.name} entry={e} master={false} ticked={isRemoteTicked({ name: e.name, master: false })} onTick={tickRemote} onDelete={deleteRemote} />
           ))}
+          {listing && listing.masters.length > 0 && (
+            <>
+              <div className={ui.sectionHeader}>
+                Master fonts
+                <span className={ui.sectionMeta}>/SYSTEM/MASTER</span>
+              </div>
+              {listing.masters.map((e) => (
+                <RemoteRow key={e.name} entry={e} master={true} ticked={isRemoteTicked({ name: e.name, master: true })} onTick={tickRemote} onDelete={deleteRemote} />
+              ))}
+            </>
+          )}
         </div>
       </section>
+    </div>
+  )
+}
+
+interface RemoteRowProps {
+  entry: RemoteEntry
+  master: boolean
+  ticked: boolean
+  onTick(file: RemoteFile, on: boolean): void
+  onDelete(items: RemoteFile[]): void
+}
+
+/** A file on the unit. Only 9xxx test files get a tick box and a Delete button. */
+function RemoteRow({ entry, master, ticked, onTick, onDelete }: RemoteRowProps): JSX.Element {
+  const file = { name: entry.name, master }
+  const test = TEST_FONT.test(entry.name)
+  return (
+    <div className={FONT_NAME.test(entry.name) ? styles.remoteRow : styles.remoteRowDim}>
+      <input type="checkbox" aria-label={`Select ${entry.name} on the unit`} checked={ticked} disabled={!test} onChange={(e) => onTick(file, e.target.checked)} />
+      <span className={`${ui.mono} ${styles.remoteName}`}>
+        {entry.name}
+        {entry.dir ? '/' : ''}
+      </span>
+      <span className={styles.size}>{formatSize(entry.size)}</span>
+      {test && (
+        <button className={ui.btnSmall} onClick={() => onDelete([file])}>
+          Delete
+        </button>
+      )}
     </div>
   )
 }

@@ -133,9 +133,11 @@ export default function ConvertTab(props: Props): JSX.Element {
     try {
       for (const [i, { code, scanlines }] of batch.entries()) {
         setStatus(isBatch ? `Converting ${i + 1} of ${batch.length}…` : 'Converting…')
-        const { font, log: lines } = await api.convert({ ...settings, code, scanlines, ttf: source.path, index: source.index, name })
+        // One master serves every size in the batch
+        const { font, master, log: lines } = await api.convert({ ...settings, master: settings.master && i === 0, code, scanlines, ttf: source.path, index: source.index, name })
         lines.forEach((line) => log(line))
         log(`Converted ${font.file} (${scanlines} scanlines, ${formatSize(font.size)})`, 'ok')
+        if (master) log(`Made master font ${master.file} for Flash Font (${master.glyphs} outlines, ${formatSize(master.size)})`, 'ok')
         await refreshFonts()
         onCurrent(font.file)
         setView('compare')
@@ -335,6 +337,10 @@ export default function ConvertTab(props: Props): JSX.Element {
             <input type="checkbox" checked={settings.kern} onChange={(e) => set('kern', e.target.checked)} />
             Copy pair kerning from the font
           </label>
+          <label className={ui.check} title="Writes the font's outlines as master font .<master id>, which Flash Font on the unit scales to any size. It uploads along with the fonts.">
+            <input type="checkbox" checked={settings.master} onChange={(e) => set('master', e.target.checked)} />
+            Make a master font for Flash Font
+          </label>
         </div>
 
         <div className={styles.convertBar}>
@@ -366,6 +372,9 @@ export default function ConvertTab(props: Props): JSX.Element {
             <div className={ui.hint}>
               .{first.code}–.{last.code}: {batch.map((b) => b.scanlines).join(', ')} scanlines, all master id {settings.masterId}.
             </div>
+          )}
+          {codeValid && settings.master && !/^\d{4}$/.test(settings.masterId) && (
+            <div className={`${ui.hint} ${ui.hintWarn}`}>The master id must be exactly 4 digits to make a master font.</div>
           )}
           {codeValid && batchValid && isBatch && outsideOriginals && (
             <div className={`${ui.hint} ${ui.hintWarn}`}>

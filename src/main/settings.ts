@@ -4,7 +4,7 @@ import { join } from 'path'
 import type { Settings } from '@shared/types'
 
 const DEFAULTS: Settings = {
-  convert: { scanlines: 46, code: '9100', masterId: '9000', edge: 'none', lines: 3, aspect: 1.17, spacing: 0.95, kern: true, batchAbove: 0, batchBelow: 0, batchStep: 4 },
+  convert: { scanlines: 46, code: '9100', masterId: '9000', edge: 'none', lines: 3, aspect: 1.17, spacing: 0.95, kern: true, master: false, batchAbove: 0, batchBelow: 0, batchStep: 4 },
   ftp: { host: '10.37.0.2', port: 21, pause: 5, speed: 1, gap: 250 }, // the emulator's address
   emulator: { image: '', folder: '', captureFolder: '', videoInput: '' }
 }

@@ -189,6 +189,14 @@
   color: var(--color-warning);
 }
 
+.master {
+  flex-shrink: 0;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+
 .previewPane {
   flex-shrink: 0;
   height: 210px;

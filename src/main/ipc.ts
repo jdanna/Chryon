@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from 'fs'
 import { join } from 'path'
-import type { ConvertRequest, FontInfo, FtpConfig, FtpListing, Settings, SourcePreview, SourcePreviewRequest, UploadProgress, UploadResult } from '@shared/types'
+import type { ConvertRequest, FontInfo, FtpConfig, FtpListing, MasterInfo, RemoteFile, Settings, SourcePreview, SourcePreviewRequest, UploadProgress, UploadResult } from '@shared/types'
 import { Bridge } from './bridge'
 import { loadSettings, saveSettings } from './settings'
 
@@ -18,6 +18,13 @@ function tempFile(file: string): string {
   return join(tempDir(), file)
 }
 
+/** Master (outline) fonts live in master/ under the temp folder, so a master and a font
+ *  with the same code never collide. */
+function tempMaster(file: string): string {
+  if (!/^\.\d{4}$/.test(file)) throw new Error(`Not a font file name: ${file}`)
+  return join(tempDir(), 'master', file)
+}
+
 function removeFont(path: string): void {
   rmSync(path, { force: true })
   rmSync(path + '.png', { force: true })
@@ -30,6 +37,21 @@ export function registerIpc(win: BrowserWindow): Bridge {
   const bridge = new Bridge((event) => {
     if (event.event === 'upload' && !win.isDestroyed()) win.webContents.send('ftp:progress', event as unknown as UploadProgress)
   })
+
+  const outputs = async (): Promise<{ dir: string; files: FontInfo[]; masters: MasterInfo[] }> => {
+    const dir = tempDir()
+    const [files, masters] = await Promise.all([bridge.call<FontInfo[]>('outputs', { dir }), bridge.call<MasterInfo[]>('masters', { dir })])
+    return { dir, files, masters }
+  }
+
+  /** A master stays as long as a font names it. */
+  const pruneMasters = async (): Promise<void> => {
+    const { files, masters } = await outputs()
+    const named = new Set(files.map((f) => `.${f.master ?? ''}`))
+    for (const m of masters) {
+      if (!named.has(m.file)) removeFont(tempMaster(m.file))
+    }
+  }
 
   ipcMain.handle('fonts:system', () => bridge.call('system_fonts'))
   ipcMain.handle('fonts:faces', (_, path: string) => bridge.call('faces', { path }))
@@ -48,14 +70,11 @@ export function registerIpc(win: BrowserWindow): Bridge {
   ipcMain.handle('fonts:convert', (_, req: ConvertRequest) =>
     bridge.call('convert', {
       ttf: req.ttf, index: req.index, name: req.name, scanlines: req.scanlines, code: req.code, master_id: req.masterId,
-      edge: req.edge, lines: req.lines, aspect: req.aspect, spacing: req.spacing, kern: req.kern, out: tempDir()
+      edge: req.edge, lines: req.lines, aspect: req.aspect, spacing: req.spacing, kern: req.kern, master: req.master, out: tempDir()
     })
   )
 
-  ipcMain.handle('outputs:list', async () => {
-    const dir = tempDir()
-    return { dir, files: await bridge.call<FontInfo[]>('outputs', { dir }) }
-  })
+  ipcMain.handle('outputs:list', outputs)
   ipcMain.handle('outputs:preview', (_, file: string, kind: 'maxine' | 'source') => {
     const png = tempFile(file) + (kind === 'source' ? '.source.png' : '.png')
     return existsSync(png) ? `data:image/png;base64,${readFileSync(png).toString('base64')}` : null
@@ -73,7 +92,10 @@ export function registerIpc(win: BrowserWindow): Bridge {
     copyFileSync(source, dest)
     return dest
   })
-  ipcMain.handle('outputs:delete', (_, file: string) => removeFont(tempFile(file)))
+  ipcMain.handle('outputs:delete', async (_, file: string) => {
+    removeFont(tempFile(file))
+    await pruneMasters()
+  })
   ipcMain.handle('outputs:delete-many', async (_, files: string[]) => {
     const paths = files.map(tempFile)
     const { response } = await dialog.showMessageBox(win, {
@@ -86,39 +108,47 @@ export function registerIpc(win: BrowserWindow): Bridge {
     })
     if (response !== 0) return false
     paths.forEach(removeFont)
+    await pruneMasters()
     return true
   })
   ipcMain.handle('outputs:open-folder', () => shell.openPath(tempDir()))
 
   ipcMain.handle('ftp:list', (_, cfg: FtpConfig) => bridge.call('ftp_list', cfg))
-  ipcMain.handle('ftp:upload', async (_, cfg: FtpConfig, files: string[], replacing: string[]) => {
+  ipcMain.handle('ftp:upload', async (_, cfg: FtpConfig, files: string[], replacing: string[], masters: string[] = []) => {
     const paths = files.map(tempFile)
+    const masterPaths = masters.map(tempMaster)
     const notes = [
       `${files.join(', ')}\n\nLoad one font at a time on the unit. Stop if it fails to load, hangs or crashes.`
     ]
+    if (masters.length) notes.push(`Master ${plural(masters.length, 'font')} for Flash Font, to /SYSTEM/MASTER: ${masters.join(', ')}`)
     if (replacing.length) notes.push(`Already on the unit, will be replaced: ${replacing.join(', ')}`)
-    const originals = files.filter((f) => !f.startsWith('.9'))
+    const originals = [...files, ...masters].filter((f) => !f.startsWith('.9'))
     if (originals.length) notes.push(`Not a 9xxx test code, so this can replace an original font: ${originals.join(', ')}`)
     const { response } = await dialog.showMessageBox(win, {
       type: replacing.length || originals.length ? 'warning' : 'question',
-      message: `Upload ${plural(files.length, 'font')} to ${cfg.host}?`,
+      message: `Upload ${plural(files.length + masters.length, 'font')} to ${cfg.host}?`,
       detail: notes.join('\n\n'),
       buttons: ['Upload', 'Cancel'],
       defaultId: originals.length ? 1 : 0,
       cancelId: 1
     })
-    return response === 0 ? bridge.call<UploadResult>('ftp_upload', { ...cfg, paths }) : null
+    return response === 0 ? bridge.call<UploadResult>('ftp_upload', { ...cfg, paths, masters: masterPaths }) : null
   })
-  ipcMain.handle('ftp:delete', async (_, cfg: FtpConfig, name: string) => {
+  ipcMain.handle('ftp:delete', async (_, cfg: FtpConfig, items: RemoteFile[]) => {
+    const fonts = items.filter((i) => !i.master).map((i) => i.name)
+    const masters = items.filter((i) => i.master).map((i) => i.name)
+    const notes = []
+    if (fonts.length) notes.push(`From /MAXINE/MACHINE: ${fonts.join(', ')}`)
+    if (masters.length) notes.push(`From /SYSTEM/MASTER: ${masters.join(', ')}`)
     const { response } = await dialog.showMessageBox(win, {
       type: 'warning',
-      message: `Delete ${name} from ${cfg.host}?`,
-      detail: 'This removes the file from the MAXINE! and cannot be undone.',
+      message: `Delete ${plural(items.length, 'file')} from ${cfg.host}?`,
+      detail: `${notes.join('\n')}\n\nThis removes them from the MAXINE! and cannot be undone.`,
       buttons: ['Delete', 'Cancel'],
       defaultId: 1,
       cancelId: 1
     })
-    return response === 0 ? bridge.call<FtpListing>('ftp_delete', { ...cfg, name }) : null
+    return response === 0 ? bridge.call<FtpListing>('ftp_delete', { ...cfg, items }) : null
   })
   ipcMain.handle('ftp:disconnect', () => bridge.call('ftp_disconnect'))
 

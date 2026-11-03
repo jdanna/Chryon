@@ -9,7 +9,10 @@
 
     +00  control. Bit 5 set: the data port takes run records. Clear: it
          copies whole rows, which is how the driver fills large areas. Bits
-         2..0 flip the displayed bank of up to three boards.
+         2..0 flip the displayed bank of up to three boards. Bits 15..11 with
+         bit 10 clear: horizontal zoom - 2, each pixel repeated. Image Tools'
+         Zoom / Pan pairs it with a line table that repeats each row as often,
+         so the picture scales from its top left.
     +04  colour number, selecting a palette bank: 0 black, 1 green, 2 blue, 3 cyan,
          4 red, 5 yellow, 6 magenta, 7 white
     +08  address, row << 10 | x. 2048 rows: two banks of 1024
@@ -225,6 +228,17 @@ static uint32_t mix(uint32_t under, uint32_t over, unsigned key)
 	return (r << 16) | (g << 8) | b;
 }
 
+// Image Tools' Zoom / Pan sets the zoom level less 2 in bits 15..11 and clears bit 10, after
+// writing a line table that repeats each row that many times, 3 to 14. The board repeats pixels
+// to match. Level 1 sets bit 10 again, and the firmware never asks for 2, whose control value
+// would be the Video Input menu's.
+unsigned chyron_fb_device::horizontal_zoom() const
+{
+	uint32_t const control = m_regs[REG_CONTROL];
+	unsigned const zoom = BIT(control, ZOOM_SHIFT, 5);
+	return (control & CONTROL_GRAPHICS) || !zoom ? 1 : zoom + 2;
+}
+
 // The bank being drawn is hidden: the driver writes one, flips, then repeats on the other. Each bank has
 // its own line table, whose entries are row << 11 | x. A crawl only moves the x of its lines, with the
 // hidden table 720 behind, as x + 1328 of 2048. Its x then wraps to 0 just where the shown strip runs
@@ -237,6 +251,7 @@ chyron_fb_device::pixel const &chyron_fb_device::display_pixel(int y, int x) con
 	bool const bank = m_regs[REG_CONTROL] & CONTROL_BANK;
 	uint32_t const shown = m_regs[(bank ? LINES_B : LINES_A) + y];
 	uint32_t const hidden = m_regs[(bank ? LINES_A : LINES_B) + y];
+	x /= horizontal_zoom();
 	unsigned const next = (hidden & (LINE_X_SIZE - 1)) + x;
 	if (next >= LINE_X_SIZE && hidden != shown) // equal tables only shift the line, as Video Input's x of 2047 does
 		return row((hidden >> 11) + (bank ? 0 : ROWS / 2))[next - LINE_X_SIZE];
@@ -318,7 +333,7 @@ void chyron_fb_device::output(int y, int x, unsigned level, uint32_t &video, uin
 {
 	uint32_t const control = m_regs[REG_CONTROL];
 	pixel const &p = display_pixel(y, x);
-	if (!(control & CONTROL_GRAPHICS) && p.direct)
+	if (!(control & CONTROL_GRAPHICS) && !BIT(control, ZOOM_SHIFT, 5) && p.direct)
 	{
 		video = p.color;
 		key = p.key;

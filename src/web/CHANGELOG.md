@@ -1,3 +1,6 @@
+## 1.6.2
+- Fixed Image Tools' Zoom / Pan, which scaled vertically only
+
 ## 1.6.1
 - Added uploading a frame to feed the MAXINE!'s video input
 - Fixed font conversion with texture

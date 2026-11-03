@@ -117,6 +117,11 @@
     "expect": false
   },
   {
+    "click": "Make a master font",
+    "eval": "[...document.querySelectorAll('label')].find((l) => l.textContent.includes('Make a master font')).querySelector('input').checked",
+    "expect": true
+  },
+  {
     "click": "Convert 3 sizes",
     "wait": 9000,
     "eval": "[...document.querySelectorAll('[class*=\"statValue\"]')].map((e) => e.textContent)[2]",
@@ -128,7 +133,7 @@
     "eval": "[document.querySelectorAll('[class*=\"groupRow\"]').length, document.querySelector('[class*=\"groupRow\"]').innerText.replace(/\\s+/g, ' ').replace(/ [\\d.]+ KB$/, '')]",
     "expect": [
       1,
-      "9000 Arial Bold 5 variants · 40–52 scanlines"
+      "9000 Arial Bold 5 variants · 40–52 scanlines Master"
     ],
     "shot": "upload-disconnected"
   },

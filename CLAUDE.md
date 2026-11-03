@@ -39,6 +39,11 @@ the user says to.
   below). Wraps the converter and all FTP commands.
 - `tools/footer_template.bin` — the fixed 6036-byte footer copied from `.3000`
   (only the 66×66 thumbnail and 30×30 icon inside it are regenerated per font).
+- `tools/maxine_master.py` — master (outline) font reader, writer and renderer:
+  `info`, `glyph`, `render` (PNG sheet by char id), `roundtrip`. The format is in its docstring.
+- `tools/ttf2master.py` — TTF/OTF → master font. `convert_master(...)` is what the bridge calls.
+  The 18 stock masters live in `/SYSTEM/MASTER` on `emulator/roms/maxine-v11.01.img`
+  (`tools/phile.py get`), not in the repo.
 
 ## Ground truth / test loop (we have real hardware)
 
@@ -197,6 +202,43 @@ The app's Batch sizes option follows this (`batch` in `ConvertTab.tsx`, default 
 `Sizes above` and `Sizes below` count extra fonts on each side of the Scanlines value;
 the first code is always the smallest size.
 
+## Master fonts and Flash Font (`tools/maxine_master.py`, `tools/ttf2master.py`)
+
+Machine fonts are bitmaps at one size. The unit's **Flash Font** (CNVRT key in Message
+Compose; "Advanced On-line Convert" is ALT CNVRT) cuts characters at any size from a
+**master font**, the scalable outline in `/SYSTEM/MASTER/.NNNN`, where NNNN is the master id
+at `0xce` in the machine font. Decoded on 2026-11-02 from the 18 stock masters and confirmed
+in the emulator on 2026-11-03: a Helvetica Bold master built by `ttf2master.py` as `.9000`
+listed under Flash Font → List as "9000 Helvetica Bold", loaded, and typed cleanly at 50
+scanlines (lightning-bolt icon, "Master ID: 9000"). Not yet tried on the real unit.
+
+Format (big-endian, full layout in the module docstring): u32 400, site id `ffffffff`,
+name, master id u16 at `0x88`, a 400-entry `[u16 char id][u32 word offset]` index at
+`0x186`, glyph data at `0xae8`, kerning, zero padding. Units are **8640/em** (the em dash is
+8640 wide; cap height 6208 = Helvetica's 0.718). Each glyph: 8 × s16 (ordinal, advance,
+xmin, xmax, ymax, ymin, record count, contour count), 4 hint words, then 4-byte
+`[x][y]` records with 14-bit coordinates relative to xmin/ymin: x bit 14 clear starts a
+contour (bit 15 = hole), `01` a point, `11` the **centre of a circular arc** joining the
+points on either side (equidistant from both, always the minor arc, ≤ 90°). Outlines are
+chains of lines and arcs, not Beziers; all contours run clockwise and fill even-odd.
+Centres must sit no further left or below than the bbox, so `ttf2master.py` splits each
+Bezier into ≤ 22.5° pieces, fits the circle through each piece's ends and midpoint, and
+falls back to short lines when the centre won't encode. The y-flag bits on points and
+arcs look like carried-over Bitstream hints; the converter writes 0 / 2 and the firmware
+renders fine. Kerning is 6-byte `[left id + 1][right id + 1][s16]` in **4320/em** (A–T −160
+↔ −2 px in `.0000`), starting at the first address ≡ 0x88 mod 0x100 after the glyph data;
+header `0xde` is that address as a 1-based 256-byte block number (`(k0 − 0x88)/256 + 1`), and
+getting it wrong gives "Seek past end of file lseek_f() - otf_file()" on load. `0xee` is the
+tallest ymax / 2. `0xe2`/`0xe6` (570–1087) and `0xf2` are still unknown and copied from the
+Swiss master. Char ids: A–Z 0–25, & 26, a–z 27–52, fi fl 53–54, 1234567890 55–64, then
+£ $ ¢ ƒ % ‰ ⁄ · . , : ; ‘ “ ’ ” ‚ „ ? ! / ( ) [ ] * † ‡ § - – — at 65–96; the keyboard's
+`<` `'` `>` are “ ’ ” (78, 79, 80). Accented ids above 96 aren't mapped yet.
+
+In the app, **Make a master font for Flash Font** on the Convert tab writes
+`<temp>/MAXINE Studio/master/.<master id>` once per batch; the Upload tab tags the group
+"Master" (or "Master on unit"), sends it to `/SYSTEM/MASTER` after the fonts, lists that
+folder under the unit's fonts, and deletes a master once no font names it.
+
 ## Converter design (`tools/ttf2maxine.py`)
 
 Rasterizes each glyph with Pillow at 4× supersampling, stretches by
@@ -282,7 +324,9 @@ npm run dist:mac | dist:win | dist:linux | release     # unsigned installers
   2026-11-01, so don't go back to that. A reused link is probed with `NOOP` first and
   reopened if the unit dropped it. A batch is N × `STOR` and one `LIST`, which is the
   only way to read sizes back; upload and delete return that listing so the tab never
-  reconnects to refresh. The replica of the unit's replies used to test this lives
+  reconnects to refresh. The unit's list has tick boxes on `.9xxx` files (fonts and
+  masters) and a Delete selected button; `ftp_delete` takes `items` and still refuses
+  anything that isn't `.9xxx`. The replica of the unit's replies used to test this lives
   only in the session scratchpad, not the repo.
 - **Batch uploads need pacing.** A 5-font batch finished cleanly on the unit on
   2026-11-01 with the current defaults: `pause` 5 (s after each `STOR`), `speed` 1
@@ -378,7 +422,8 @@ python3 tools/phile.py ls emulator/roms/maxine-v11.01.img /SYSTEM/PROGRAMS
 - **Status 2026-11-02:** boots on a stub to the real Program Loader and Message Compose. Working:
   keyboard and mouse, 64 MB expansion RAM, font load, typing in colour, messages saved to and read
   from disk, the frame buffer (`chyronfb.cpp`), Prompts and Color Edit screens, Video and Key export, roll and crawl,
-  live capture. `emulator/README.md` lists the gaps.
+  live capture, and Image Tools' Zoom / Pan (2026-11-03: the line tables repeat rows and control bits 15..11 repeat
+  pixels, see `docs/hardware-map.md`; before that only the vertical half was modelled, so zoomed text looked tall). `emulator/README.md` lists the gaps.
 - The machine has four outputs: Prompts, Color Edit, Video, Key. The window shows Prompts on the left, and on the right
   Color Edit, Video or Key, from the SECOND SCREEN key (`m_second_screen`). Right Ctrl exports Video and Key. Video and Key must stay clean of overlays. The panel's export buttons save to the
   snapshot folder and print `MAXINE_EXPORT`, then `saveExport` in `emulator.ts` asks for a folder and moves the pair,
@@ -476,6 +521,8 @@ python3 tools/phile.py ls emulator/roms/maxine-v11.01.img /SYSTEM/PROGRAMS
    capture than a phone photo.
 
 5. Is the CPU card really an MVME162, and is Chyron's boot code in its EPROM or Flash?
+6. Master fonts on the real unit: whether a `ffffffff` site id passes its "SITE ID
+   MISMATCH" check as it does in the emulator, and what `0xe2`/`0xf2` mean.
 
 ## History
 
@@ -499,6 +546,9 @@ python3 tools/phile.py ls emulator/roms/maxine-v11.01.img /SYSTEM/PROGRAMS
   Found the 30×30 browser icon in the footer and made the converter draw it. A multi-font
   upload hung the unit; FTP became one persistent session with a Disconnect button,
   and when that still locked up after three files, a pause between files was added.
+- 2026-11-02/03 (Fable): decoded the master (outline) font format from the disk image's
+  `/SYSTEM/MASTER`, wrote `maxine_master.py` and `ttf2master.py`, and confirmed Flash Font
+  typing from a converted master in the emulator. Added the master checkbox and upload.
 - 2026-11-01 (Opus): started the MAME emulator. Booted the 11.01 image to the Program Loader on a stub
   boot, and found from the firmware's behaviour that the CPU card is an MVME162. Then keyboard,
   mouse, frame buffer, Message Compose, and the output split, into 2026-11-02.

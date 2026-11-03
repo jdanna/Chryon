@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { FontInfo, FontSource, Settings } from '@shared/types'
+import type { FontInfo, FontSource, MasterInfo, Settings } from '@shared/types'
 import ConvertTab from './components/ConvertTab'
 import EmulatorTab from './components/EmulatorTab'
 import LogPanel, { LogEntry, LogKind } from './components/LogPanel'
@@ -17,6 +17,7 @@ export default function App(): JSX.Element {
   const [status, setStatus] = useState('Ready')
   const [log, setLog] = useState<LogEntry[]>([])
   const [fonts, setFonts] = useState<FontInfo[]>([])
+  const [masters, setMasters] = useState<MasterInfo[]>([])
   const [tempDir, setTempDir] = useState('')
   const [source, setSource] = useState<FontSource | null>(null)
   const [current, setCurrent] = useState<string | null>(null)
@@ -29,9 +30,10 @@ export default function App(): JSX.Element {
 
   const refreshFonts = useCallback(async (): Promise<FontInfo[]> => {
     try {
-      const { dir, files } = await api.outputs()
+      const { dir, files, masters } = await api.outputs()
       setTempDir(dir)
       setFonts(files)
+      setMasters(masters)
       return files
     } catch (err) {
       addLog(`Could not list converted fonts: ${errorMessage(err)}`, 'error')
@@ -116,6 +118,7 @@ export default function App(): JSX.Element {
             settings={settings.ftp}
             onSettings={(ftp) => setSettings({ ...settings, ftp })}
             fonts={fonts}
+            masters={masters}
             tempDir={tempDir}
             refreshFonts={refreshFonts}
             current={current}

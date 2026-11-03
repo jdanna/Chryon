@@ -138,7 +138,7 @@ IDT7201 FIFOs (p5), palette 2K×25 (p6), VRAM (p13–17).
 
 | Offset | Use |
 |---|---|
-| `+00` | Control. Bit 5 set: data port takes run records. Clear: it copies rows. Bits 2..0 flip the displayed bank of up to three boards (bit 0 set shows bank B). Bits 18..11 and others unexplained |
+| `+00` | Control. Bit 5 set: data port takes run records. Clear: it copies rows. Bits 2..0 flip the displayed bank of up to three boards (bit 0 set shows bank B). Bits 15..11 with bit 10 clear: horizontal zoom − 2 (see Zoom). Bits 18..16 and others unexplained |
 | `+04` | Colour number: 0 black, 1 green, 2 blue, 3 cyan, 4 red, 5 yellow, 6 magenta, 7 white |
 | `+08` | Address, `row << 10 \| x`. 2048 rows, two banks of 1024 |
 | `+0c` | Data port |
@@ -174,6 +174,13 @@ and writes no pixels while it runs: the text was drawn ahead into 720-pixel stri
 x stays 720 behind, as x + 1328 of 2048, so it wraps to 0 just where the shown strip ends, and the picture continues from
 the other bank there. When the shown x reaches 720, control bit 0 flips and the firmware points the other table at the
 next strip. That's inferred from the values, and which logic does it on the board isn't known.
+
+**Zoom / Pan is the line tables plus pixel repeat (fw).** Image Tools' Zoom / Pan (CNTL G, F3) at level n writes both line
+tables so that each row from 22 repeats n times, which is the vertical zoom, and puts n − 2 in control bits 15..11 with bit 10
+clear, which makes the board repeat each pixel n times. The firmware offers levels 1 and 3 to 14, never 2, whose control value
+would be the Video Input menu's. Level 1 sets bit 10 again. Pan moves the tables: left and right change x by 60 source pixels
+a step, up and down the row by 40, and the arrows point the way the picture moves, clamped at the picture's top left. Confirmed
+in the emulator on 2026-11-03 by tapping the registers; the real board's result hasn't been photographed.
 
 **Capture conventions.** The driver has no field parity, and the video board isn't modelled, so a capture's lower-field-first
 order is the 486-line NTSC standard, and its 10:11 tag is Rec. 601's value, not a measurement. Each field is sampled 21

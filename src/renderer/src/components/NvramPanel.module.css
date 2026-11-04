@@ -25,15 +25,10 @@
   gap: 2px;
 }
 
-.note,
 .error {
   padding-left: calc(84px * var(--font-scale) + var(--space-2));
   font-size: var(--font-size-xs);
   line-height: 1.35;
-  color: var(--color-text-muted);
-}
-
-.error {
   color: var(--color-error);
 }
 

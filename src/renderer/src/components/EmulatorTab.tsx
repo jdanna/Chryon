@@ -171,7 +171,7 @@ export default function EmulatorTab({ settings, onSettings, log: appLog, setStat
 
   // The saved device stays in the list when it isn't connected, so choosing another is deliberate
   const decklinkChoices = settings.decklink && !decklink.devices.includes(settings.decklink) ? [...decklink.devices, settings.decklink] : decklink.devices
-  const decklinkNote = (): JSX.Element => {
+  const decklinkNote = (): JSX.Element | null => {
     if (decklink.error) return <div className={`${styles.note} ${ui.hintWarn}`}>{decklink.error}</div>
     if (decklink.driver === false)
       return <div className={`${styles.note} ${ui.hintWarn}`}>Blackmagic Desktop Video isn't installed, so there are no DeckLink devices.</div>
@@ -183,7 +183,7 @@ export default function EmulatorTab({ settings, onSettings, log: appLog, setStat
           {SOURCE_NAMES[decklink.source]}, NTSC 525i59.94
         </span>
       )
-    return <div className={styles.note}>Plays Color Edit, Video or Key as NTSC 525i59.94, whichever SECOND SCREEN shows.</div>
+    return null
   }
 
   const setNdiOutput = async (on: boolean): Promise<void> => {
@@ -196,7 +196,7 @@ export default function EmulatorTab({ settings, onSettings, log: appLog, setStat
     }
   }
 
-  const ndiNote = (): JSX.Element => {
+  const ndiNote = (): JSX.Element | null => {
     if (ndi.error) return <div className={`${styles.note} ${ui.hintWarn}`}>{ndi.error}</div>
     if (ndi.active)
       return (
@@ -204,12 +204,7 @@ export default function EmulatorTab({ settings, onSettings, log: appLog, setStat
           {ndi.receivers ? `Fill ${receiverCount(ndi.receivers[0])}, Matte ${receiverCount(ndi.receivers[1])}` : 'MAXINE! Fill and MAXINE! Matte'}
         </span>
       )
-    return (
-      <div className={styles.note}>
-        Sends Video and Key as two NDI sources, MAXINE! Fill and MAXINE! Matte, 720×486 at 59.94i. Needs the NDI runtime, which comes with NDI
-        Tools.
-      </div>
-    )
+    return null
   }
 
   const triggerGpi = async (): Promise<void> => {
@@ -297,17 +292,6 @@ export default function EmulatorTab({ settings, onSettings, log: appLog, setStat
                 Stop network
               </button>
             </div>
-            <div className={styles.note}>
-              {running
-                ? 'The emulator only attaches when it starts, so stop it to change this.'
-                : status?.network
-                  ? 'This computer is 10.37.0.1, and the MAXINE will be 10.37.0.2.'
-                  : needsTap
-                    ? 'The network needs the free TAP-Windows driver from OpenVPN. Install it with the default options, then come back here.'
-                    : api.platform === 'win32'
-                      ? 'Asks for administrator approval. Stays set up until you stop it.'
-                      : 'Asks for your password. Lasts until you restart your computer.'}
-            </div>
           </div>
 
           <div className={ui.sectionHeader}>
@@ -327,10 +311,49 @@ export default function EmulatorTab({ settings, onSettings, log: appLog, setStat
                 Trigger
               </button>
             </div>
-            <div className={styles.note}>
-              Closes a GPI input, as a contact closure on the rear panel does. The firmware takes GPI 1 to 8 as F1 to F8. Other programs on this
-              computer, such as the BVE-9100 emulator, can send <span className={ui.mono}>gpi 4</span> to UDP 127.0.0.1:{GPI_UDP_PORT}, or{' '}
-              <span className={ui.mono}>gpi 4 on</span> and <span className={ui.mono}>gpi 4 off</span> to hold it closed.
+          </div>
+
+          <div className={ui.sectionHeader}>
+            Capture
+            <span className={ui.sectionMeta}>{capture.active ? 'recording' : 'stopped'}</span>
+          </div>
+          <div className={styles.block}>
+            {capture.active ? (
+              <button className={`${ui.btn} ${styles.wide}`} disabled={captureBusy} onClick={stopCapture}>
+                {captureBusy ? 'Finishing…' : 'Stop capture'}
+              </button>
+            ) : (
+              <button className={`${ui.btn} ${styles.wide}`} disabled={captureBusy || !running || !!status?.captureMissing} onClick={startCapture}>
+                Start capture
+              </button>
+            )}
+            {capture.active && (
+              <span className={`${ui.mono} ${styles.pathValue}`}>
+                {elapsed(capture.seconds)}, {megabytes(capture.bytes)}
+              </span>
+            )}
+            {capture.behind && (
+              <div className={`${styles.note} ${ui.hintWarn}`}>The emulator is behind real time. Every field is still being saved.</div>
+            )}
+            {status?.captureMissing && <div className={`${styles.note} ${ui.hintWarn}`}>{status.captureMissing}</div>}
+            <div className={styles.path}>
+              <span className={styles.pathLabel}>Capture folder</span>
+              <span className={`${ui.mono} ${styles.pathValue}`} title={status?.captureFolder}>
+                {status?.captureFolder}
+              </span>
+              <div className={styles.buttons}>
+                <button className={ui.btnSmall} disabled={capture.active} onClick={pickCaptureFolder}>
+                  Browse…
+                </button>
+                {settings.captureFolder && (
+                  <button className={ui.btnSmall} disabled={capture.active} onClick={() => onSettings({ ...settings, captureFolder: '' })}>
+                    Use default
+                  </button>
+                )}
+                <button className={ui.btnSmall} onClick={() => api.openCaptureFolder(settings)}>
+                  Open
+                </button>
+              </div>
             </div>
           </div>
         </section>
@@ -384,11 +407,6 @@ export default function EmulatorTab({ settings, onSettings, log: appLog, setStat
                   Reset…
                 </button>
               </div>
-              <span className={styles.note}>
-                {hasDisk
-                  ? 'Runs use this copy, so a new read-only image only applies after a reset.'
-                  : 'The first run copies the read-only image here.'}
-              </span>
             </div>
           </div>
         </section>
@@ -413,59 +431,6 @@ export default function EmulatorTab({ settings, onSettings, log: appLog, setStat
                     Clear
                   </button>
                 )}
-              </div>
-              <span className={styles.note}>
-                What the Video Input board sees. In Message Compose, CNTL then I shows it live, and Video Freeze keeps it.
-              </span>
-            </div>
-          </div>
-
-          <div className={ui.sectionHeader}>
-            Capture
-            <span className={ui.sectionMeta}>{capture.active ? 'recording' : 'stopped'}</span>
-          </div>
-          <div className={styles.block}>
-            {capture.active ? (
-              <button className={`${ui.btn} ${styles.wide}`} disabled={captureBusy} onClick={stopCapture}>
-                {captureBusy ? 'Finishing…' : 'Stop capture'}
-              </button>
-            ) : (
-              <button className={`${ui.btn} ${styles.wide}`} disabled={captureBusy || !running || !!status?.captureMissing} onClick={startCapture}>
-                Start capture
-              </button>
-            )}
-            {capture.active && (
-              <span className={`${ui.mono} ${styles.pathValue}`}>
-                {elapsed(capture.seconds)}, {megabytes(capture.bytes)}
-              </span>
-            )}
-            {capture.behind && (
-              <div className={`${styles.note} ${ui.hintWarn}`}>The emulator is behind real time. Every field is still being saved.</div>
-            )}
-            {status?.captureMissing ? (
-              <div className={`${styles.note} ${ui.hintWarn}`}>{status.captureMissing}</div>
-            ) : (
-              !capture.active && (
-                <div className={styles.note}>Records Video and Key as ProRes 422 HQ, 720×486 at 59.94i, up to about 1 GB a minute.</div>
-              )
-            )}
-            <div className={styles.path}>
-              <span className={styles.pathLabel}>Capture folder</span>
-              <span className={`${ui.mono} ${styles.pathValue}`} title={status?.captureFolder}>
-                {status?.captureFolder}
-              </span>
-              <div className={styles.buttons}>
-                <button className={ui.btnSmall} disabled={capture.active} onClick={pickCaptureFolder}>
-                  Browse…
-                </button>
-                {settings.captureFolder && (
-                  <button className={ui.btnSmall} disabled={capture.active} onClick={() => onSettings({ ...settings, captureFolder: '' })}>
-                    Use default
-                  </button>
-                )}
-                <button className={ui.btnSmall} onClick={() => api.openCaptureFolder(settings)}>
-                  Open
-                </button>
               </div>
             </div>
           </div>
@@ -507,7 +472,6 @@ export default function EmulatorTab({ settings, onSettings, log: appLog, setStat
               </select>
             </label>
             {ndiNote()}
-            <div className={styles.note}>NDI® is a registered trademark of Vizrt NDI AB.</div>
           </div>
         </section>
 

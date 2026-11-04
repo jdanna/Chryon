@@ -124,15 +124,11 @@ export default function NvramPanel({ config, running, log }: Props): JSX.Element
             <div className={ui.fields}>
               {NVRAM_FIELDS.filter((f) => f.group === group).map((field) => (
                 <div key={field.id} className={styles.row}>
-                  <label className={ui.field} title={`$${field.offset.toString(16).padStart(4, '0')}`}>
+                  <label className={ui.field} title={[`$${field.offset.toString(16).padStart(4, '0')}`, field.hint].filter(Boolean).join(' — ')}>
                     {field.label}
                     <FieldInput field={field} value={texts[field.id] ?? readField(draft, field)} disabled={running} onChange={(text) => edit(field, text)} />
                   </label>
-                  {errors[field.id] ? (
-                    <span className={styles.error}>{errors[field.id]}</span>
-                  ) : (
-                    field.hint && <span className={styles.note}>{field.hint}</span>
-                  )}
+                  {errors[field.id] && <span className={styles.error}>{errors[field.id]}</span>}
                 </div>
               ))}
             </div>

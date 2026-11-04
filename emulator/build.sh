@@ -58,8 +58,8 @@ fi
 cd "$MAME"
 
 SOURCES=$(cd src/mame && ls chyron/*.cpp | paste -sd , -)
-# MAME still builds a .cpp whose header the driver includes, so one that can't compile there guards itself, as decklinkout.cpp does
-[ "${MAXINE_TARGET:-}" = web ] && SOURCES=$(echo "$SOURCES" | sed 's/chyron.decklinkout.cpp,//; s/chyron.fieldcapture.cpp,//')
+# MAME still builds a .cpp whose header the driver includes, so one that can't compile there guards itself, as decklinkout.cpp and ndiout.cpp do
+[ "${MAXINE_TARGET:-}" = web ] && SOURCES=$(echo "$SOURCES" | sed 's/chyron.decklinkout.cpp,//; s/chyron.fieldcapture.cpp,//; s/,chyron.ndiout.cpp//; s/chyron.ndiout.cpp,//')
 BUILD_KEY="$SOURCES pcap nosound"
 REGENIE=0
 if [ "$BUILD_KEY" != "$(cat .maxine-sources 2>/dev/null)" ]; then

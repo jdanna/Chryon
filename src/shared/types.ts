@@ -108,6 +108,19 @@ export interface EmulatorConfig {
   videoInput: string
   /** The DeckLink device to play out of, by its display name. Empty for none. */
   decklink: string
+  /** Whether to send Video and Key as the NDI sources MAXINE! Fill and MAXINE! Matte. */
+  ndi: boolean
+}
+
+/** Other programs on this computer close the MAXINE's GPI inputs by sending `gpi <1-8>` here over UDP. */
+export const GPI_UDP_PORT = 49100
+
+/** Only known while the emulator runs, because the emulator is what loads NDI. */
+export interface NdiState {
+  active: boolean
+  /** Receivers on the fill and on the matte, once the emulator has counted. */
+  receivers: [number, number] | null
+  error: string | null
 }
 
 /** What the SECOND SCREEN key shows, and so what a DeckLink plays. */
@@ -253,6 +266,10 @@ export interface MaxineApi {
   emulatorDecklink(cfg: EmulatorConfig): Promise<void>
   /** Asks the running emulator for its DeckLink devices again. */
   emulatorDecklinkRefresh(): Promise<void>
+  /** Starts or stops the running emulator's NDI sources, from cfg.ndi. */
+  emulatorNdi(cfg: EmulatorConfig): Promise<void>
+  /** Closes GPI input 1-8 for long enough to trigger it. */
+  emulatorGpi(input: number): Promise<void>
   /** Asks for confirmation in a native dialog. Resolves to false if declined. */
   resetEmulatorDisk(cfg: EmulatorConfig): Promise<boolean>
   readNvram(cfg: EmulatorConfig): Promise<NvramFile>
@@ -261,4 +278,5 @@ export interface MaxineApi {
   onEmulatorState(listener: (running: boolean) => void): () => void
   onEmulatorCapture(listener: (state: CaptureState) => void): () => void
   onEmulatorDecklink(listener: (state: DecklinkState) => void): () => void
+  onEmulatorNdi(listener: (state: NdiState) => void): () => void
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { CaptureState, DecklinkSource, DecklinkState, EmulatorConfig, EmulatorStatus } from '@shared/types'
+import { GPI_UDP_PORT } from '@shared/types'
+import type { CaptureState, DecklinkSource, DecklinkState, EmulatorConfig, EmulatorStatus, NdiState } from '@shared/types'
 import { errorMessage } from '../format'
 import type { LogKind } from './LogPanel'
 import NvramPanel from './NvramPanel'
@@ -20,6 +21,9 @@ interface Props {
 const CAPTURE_IDLE: CaptureState = { active: false, seconds: 0, bytes: 0, behind: false }
 const DECKLINK_IDLE: DecklinkState = { driver: null, devices: [], active: null, source: 'color-edit', error: null }
 const SOURCE_NAMES: Record<DecklinkSource, string> = { 'color-edit': 'Color Edit', video: 'Video', key: 'Key' }
+const NDI_IDLE: NdiState = { active: false, receivers: null, error: null }
+const GPI_INPUTS = [1, 2, 3, 4, 5, 6, 7, 8]
+const receiverCount = (count: number): string => `${count} receiver${count === 1 ? '' : 's'}`
 
 const megabytes = (bytes: number): string => `${(bytes / 1048576).toFixed(1)} MB`
 const elapsed = (seconds: number): string => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`
@@ -32,6 +36,8 @@ export default function EmulatorTab({ settings, onSettings, log: appLog, setStat
   const [capture, setCapture] = useState(CAPTURE_IDLE)
   const [captureBusy, setCaptureBusy] = useState(false)
   const [decklink, setDecklink] = useState(DECKLINK_IDLE)
+  const [ndi, setNdi] = useState(NDI_IDLE)
+  const [gpiInput, setGpiInput] = useState(4)
   const output = useRef<HTMLDivElement>(null)
   const followOutput = useRef(true)
 
@@ -83,6 +89,7 @@ export default function EmulatorTab({ settings, onSettings, log: appLog, setStat
 
   useEffect(() => api.onEmulatorCapture(setCapture), [])
   useEffect(() => api.onEmulatorDecklink(setDecklink), [])
+  useEffect(() => api.onEmulatorNdi(setNdi), [])
   useEffect(() => {
     api.emulatorDecklinkRefresh()
   }, [])
@@ -179,6 +186,40 @@ export default function EmulatorTab({ settings, onSettings, log: appLog, setStat
     return <div className={styles.note}>Plays Color Edit, Video or Key as NTSC 525i59.94, whichever SECOND SCREEN shows.</div>
   }
 
+  const setNdiOutput = async (on: boolean): Promise<void> => {
+    const next = { ...settings, ndi: on }
+    onSettings(next)
+    try {
+      await api.emulatorNdi(next)
+    } catch (err) {
+      log(`Could not change the NDI output: ${errorMessage(err)}`, 'error')
+    }
+  }
+
+  const ndiNote = (): JSX.Element => {
+    if (ndi.error) return <div className={`${styles.note} ${ui.hintWarn}`}>{ndi.error}</div>
+    if (ndi.active)
+      return (
+        <span className={`${ui.mono} ${styles.pathValue}`}>
+          {ndi.receivers ? `Fill ${receiverCount(ndi.receivers[0])}, Matte ${receiverCount(ndi.receivers[1])}` : 'MAXINE! Fill and MAXINE! Matte'}
+        </span>
+      )
+    return (
+      <div className={styles.note}>
+        Sends Video and Key as two NDI sources, MAXINE! Fill and MAXINE! Matte, 720×486 at 59.94i. Needs the NDI runtime, which comes with NDI
+        Tools.
+      </div>
+    )
+  }
+
+  const triggerGpi = async (): Promise<void> => {
+    try {
+      await api.emulatorGpi(gpiInput)
+    } catch (err) {
+      log(`Could not trigger GPI ${gpiInput}: ${errorMessage(err)}`, 'error')
+    }
+  }
+
   const pickVideoInput = async (): Promise<void> => {
     try {
       const videoInput = await api.pickVideoInput()
@@ -266,6 +307,30 @@ export default function EmulatorTab({ settings, onSettings, log: appLog, setStat
                     : api.platform === 'win32'
                       ? 'Asks for administrator approval. Stays set up until you stop it.'
                       : 'Asks for your password. Lasts until you restart your computer.'}
+            </div>
+          </div>
+
+          <div className={ui.sectionHeader}>
+            GPI in
+            <span className={ui.sectionMeta}>UDP {GPI_UDP_PORT}</span>
+          </div>
+          <div className={styles.block}>
+            <div className={styles.buttons}>
+              <select value={gpiInput} onChange={(e) => setGpiInput(Number(e.target.value))}>
+                {GPI_INPUTS.map((input) => (
+                  <option key={input} value={input}>
+                    GPI {input}
+                  </option>
+                ))}
+              </select>
+              <button className={ui.btn} disabled={!running} onClick={triggerGpi}>
+                Trigger
+              </button>
+            </div>
+            <div className={styles.note}>
+              Closes a GPI input, as a contact closure on the rear panel does. The firmware takes GPI 1 to 8 as F1 to F8. Other programs on this
+              computer, such as the BVE-9100 emulator, can send <span className={ui.mono}>gpi 4</span> to UDP 127.0.0.1:{GPI_UDP_PORT}, or{' '}
+              <span className={ui.mono}>gpi 4 on</span> and <span className={ui.mono}>gpi 4 off</span> to hold it closed.
             </div>
           </div>
         </section>
@@ -427,6 +492,22 @@ export default function EmulatorTab({ settings, onSettings, log: appLog, setStat
               </button>
             </div>
             {decklinkNote()}
+          </div>
+
+          <div className={ui.sectionHeader}>
+            NDI output
+            <span className={ui.sectionMeta}>{ndi.active ? 'sending' : 'off'}</span>
+          </div>
+          <div className={styles.block}>
+            <label className={styles.path}>
+              <span className={styles.pathLabel}>Sources</span>
+              <select value={settings.ndi ? 'on' : 'off'} onChange={(e) => setNdiOutput(e.target.value === 'on')}>
+                <option value="off">Off</option>
+                <option value="on">Fill and Matte</option>
+              </select>
+            </label>
+            {ndiNote()}
+            <div className={styles.note}>NDI® is a registered trademark of Vizrt NDI AB.</div>
           </div>
         </section>
 

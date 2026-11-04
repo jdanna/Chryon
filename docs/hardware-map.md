@@ -91,7 +91,7 @@ The boot tries volumes `5.0`, `5.3`, `0.1`, then `0.0`. Unmatched minors give er
 | `$8210190x` | Status buffer | sch p40, fw |
 | `$82101981` | Site ID, from an undumped 16R8 PAL and 74F374. Write 0 or 1 for the high or low byte, read it bit-reversed | sch p40, `STARTUP` |
 | `$821020xx` | BIM, 8 registers on odd addresses, part not printed | sch p40, fw |
-| `$821028xx` | MC68901 MFP, GPI and timers, 3.6864 MHz | sch p40 |
+| `$821028xx` | MC68901 MFP, GPI and timers, 3.6864 MHz. Its eight GPIP pins are the GPI inputs | sch p40, PSOS |
 | `$821030xx` | Keyboard DUART, SCN68681, 3.6864 MHz | sch p44 |
 | `$821038xx` | Serial DUART, ports 2 and 3 | sch p44 |
 
@@ -261,6 +261,19 @@ guide. Letters are ASCII. Above `$7f`:
 | `$ed`, `$ee` | LOOP, END LOOP |
 | `$f0`–`$fc` | DEL MSG, RCD, BUILD, DO, TRIGGER CEL, SLOW REVL, READ NEXT, CHNG, READ, XFER, DELAY, AUTO EXECUTE, WAIT FOR KEY |
 | `$fe` | ESC |
+
+### GPI
+
+The eight GPI inputs are the MFP's GPIP pins 0-7, active low (PSOS, from `$79b8`). Init clears AER, so each
+interrupts on a falling edge, and enables all eight: IERA `$c0` (GPIP 6, 7) and IERB `$cf` (GPIP 0-5). The
+interrupt routine at `$7aa6` reads IPRA and IPRB and sends the input's bit to the `bnce` task, which waits 10 ticks
+and drops the event if the pin has gone high again. Otherwise it posts a key to the `key1` queue, as the keyboard
+does: GPI 1-5 send `$d0`-`$d4` and GPI 6-8 send `$e0`-`$e2`, the key codes of F1-F8. The Loader's Change GPI Mode
+menu offers Single User (function keys 1-8) and Dual User (7-10). Holding an input closed doesn't repeat.
+
+MAME's MFP starts its pins low, which the firmware would read as eight closed inputs, so `machine_reset` takes them
+high. Confirmed in the emulator on 2026-11-04: `gpi 4` on stdin reached the `bnce` task as `$d3`, and a closure on
+GPI 1 and 2 as `$d0` and `$d1`.
 
 The Loader sees CNTL as `$2a`. In Message Compose, CNTL brings up "Type a letter", and `HELP.MM` lists
 the letters: F fonts, D directory, B background, P palette, and so on.

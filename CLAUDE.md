@@ -503,6 +503,15 @@ python3 tools/phile.py ls emulator/roms/maxine-v11.01.img /SYSTEM/PROGRAMS
   `dump` device that writes the frames. Tested: the dump on Linux, no driver under Wine and in the 22.04 container, and
   the user's card listed on Windows on 2026-11-03 (1.7.0). Playout on a real card is unconfirmed everywhere. The Mac
   build hasn't been compiled: its SDK signatures were checked by hand, and MAME's Mac OSD already links CoreFoundation.
+- **NDI output** (`ndiout.cpp`, added 2026-11-04): Video as `MAXINE! Fill` and Key as `MAXINE! Matte`, two BGRX sources
+  at 30000/1001 interleaved, from the same field sampling as capture, as the user asked. The runtime is loaded at run
+  time (`NDI_RUNTIME_DIR_V6`, then the usual paths), and the few SDK structs are declared in the file, so no NDI SDK file
+  is in the repo. `ndi on|off` on stdin, `MAXINE_NDI_*` on stdout. Tested only against a stand-in `libndi.so.6` in the
+  session scratchpad; the user's licence acceptance is needed to fetch the real SDK, so don't accept it for them.
+- **GPI in** (2026-11-04): the GPI inputs are the MFP's GPIP pins (see `docs/hardware-map.md`), and `gpi_w` drives them,
+  active low. `gpi <1-8> [on|off]` on stdin; a bare number pulses for `GPI_PULSE_FIELDS`. The app forwards the same
+  lines from UDP `127.0.0.1:49100` (`GPI_UDP_PORT`), which is the hook for the BVE-9100 emulator. The firmware sends
+  F1-F8's key codes, so the user's "GPI 4 hits F4" is the firmware's doing, not the driver's.
 - `build-ffmpeg.sh` builds a 2 MB LGPL ffmpeg with only ProRes and what feeds it, from a pinned commit on GitHub. Never add
   `--enable-gpl`, and `vendor-emulator.mjs` refuses a build that has it.
 - To test a roll: save pages with RCD, `$f1`. It refuses an address that exists, and the default disk has 1000 and 1001.

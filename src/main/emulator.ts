@@ -1,11 +1,13 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell } from 'electron'
 import { ChildProcess, execFile, spawn } from 'child_process'
+import { createSocket } from 'dgram'
 import { existsSync, readFileSync } from 'fs'
 import { chmod, copyFile, mkdir, open, readFile, rename, rm, stat, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { basename, isAbsolute, join } from 'path'
 import { promisify } from 'util'
-import type { DecklinkSource, DecklinkState, EmulatorConfig, EmulatorStatus, NvramFile } from '@shared/types'
+import { GPI_UDP_PORT } from '@shared/types'
+import type { DecklinkSource, DecklinkState, EmulatorConfig, EmulatorStatus, NdiState, NvramFile } from '@shared/types'
 import { NVRAM_SIZE } from '@shared/nvram'
 import { Capture } from './capture'
 
@@ -32,6 +34,10 @@ const SECOND_SCREEN_LINE = /MAXINE_SECOND_SCREEN (color-edit|video|key)\s*$/
 const SOURCE_NAMES: Record<DecklinkSource, string> = { 'color-edit': 'Color Edit', video: 'Video', key: 'Key' }
 const decklinkIdle = (): DecklinkState => ({ driver: null, devices: [], active: null, source: 'color-edit', error: null })
 const DECKLINK_LIST_TIMEOUT_MS = 10000
+const NDI_LINE = /MAXINE_NDI_(ON|OFF|ERROR|RECEIVERS)(?: (.*))?$/
+const ndiIdle = (): NdiState => ({ active: false, receivers: null, error: null })
+// What another program sends to close a GPI input: on and off hold it, and a bare number pulses it
+const GPI_LINE = /^gpi ([1-8])(?: (on|off))?$/i
 const VIDEO_INPUT_FILE = 'video-input.png'
 const PICTURE_EXTENSIONS = ['png', 'jpg', 'jpeg']
 const TAP_DOWNLOAD = 'https://build.openvpn.net/downloads/releases/tap-windows-9.24.7-I601-Win10.exe'
@@ -173,6 +179,7 @@ export class Emulator {
   private exports: Promise<void> = Promise.resolve()
   private capture: Capture | null = null
   private decklink = decklinkIdle()
+  private ndi = ndiIdle()
   private listing: string[] = []
 
   constructor(private win: BrowserWindow) {}
@@ -183,6 +190,11 @@ export class Emulator {
 
   private send(channel: string, value: unknown): void {
     if (!this.win.isDestroyed()) this.win.webContents.send(channel, value)
+  }
+
+  /** A line in the emulator log from the app itself. */
+  note(line: string): void {
+    this.addLine(line)
   }
 
   private flush(): void {
@@ -221,12 +233,14 @@ export class Emulator {
       const exported = EXPORT_LINE.exec(line)
       const decklink = DECKLINK_LINE.exec(line.trimEnd())
       const screen = SECOND_SCREEN_LINE.exec(line)
+      const ndi = NDI_LINE.exec(line.trimEnd())
       if (exported) {
         const [, name, suffix = ''] = exported
         const snap = this.snapFolder
         this.exports = this.exports.then(() => this.saveExport(snap, name, `${suffix}.png`))
       } else if (decklink) this.decklinkLine(decklink[1], decklink[2] ?? '')
       else if (screen) this.setDecklink({ source: screen[1] as DecklinkSource })
+      else if (ndi) this.ndiLine(ndi[1], ndi[2] ?? '')
       else if (line.trim()) this.addLine(line.trimEnd())
     }
   }
@@ -261,6 +275,60 @@ export class Emulator {
         this.addLine(`DeckLink: ${text}`)
         this.setDecklink({ active: null, error: text })
         break
+    }
+  }
+
+  private setNdiState(change: Partial<NdiState>): void {
+    this.ndi = { ...this.ndi, ...change }
+    this.send('emulator:ndi', this.ndi)
+  }
+
+  private ndiLine(kind: string, text: string): void {
+    switch (kind) {
+      case 'ON':
+        this.addLine(`NDI: sending ${text}, 720×486 at 59.94i.`)
+        this.setNdiState({ active: true, receivers: null, error: null })
+        break
+      case 'OFF':
+        this.addLine('NDI: stopped.')
+        this.setNdiState(ndiIdle())
+        break
+      case 'ERROR':
+        this.addLine(`NDI: ${text}`)
+        this.setNdiState({ active: false, receivers: null, error: text })
+        break
+      case 'RECEIVERS': {
+        const [fill, matte] = text.split(' ').map(Number)
+        this.setNdiState({ receivers: [fill || 0, matte || 0] })
+        break
+      }
+    }
+  }
+
+  setNdi(cfg: EmulatorConfig): void {
+    this.command(cfg.ndi ? 'ndi on' : 'ndi off')
+  }
+
+  /** Input 1-8. Held closed with on, opened with off, or closed just long enough to trigger it. */
+  gpi(input: number, state?: 'on' | 'off'): void {
+    if (!Number.isInteger(input) || input < 1 || input > 8) throw new Error('GPI inputs are 1 to 8.')
+    if (!this.child) throw new Error('Run the emulator first.')
+    this.command(state ? `gpi ${input} ${state}` : `gpi ${input}`)
+  }
+
+  /** Lines from another program, such as the BVE-9100 emulator, one per command. */
+  gpiMessage(text: string, from: string): void {
+    for (const line of text.split(/\r?\n/)) {
+      const match = GPI_LINE.exec(line.trim())
+      if (!match) {
+        if (line.trim()) this.addLine(`GPI: ignored "${line.trim().slice(0, 40)}" from ${from}. Send gpi 1 to gpi 8, with on or off to hold it.`)
+        continue
+      }
+      if (!this.child) {
+        this.addLine(`GPI ${match[1]} from ${from}, but the emulator isn't running.`)
+        continue
+      }
+      this.gpi(Number(match[1]), match[2]?.toLowerCase() as 'on' | 'off' | undefined)
     }
   }
 
@@ -402,6 +470,7 @@ export class Emulator {
     this.partial = ''
     this.listing = []
     this.setDecklink({ active: null, source: 'color-edit', error: null })
+    this.setNdiState(ndiIdle())
 
     child.stdout!.setEncoding('utf8').on('data', (chunk: string) => this.receive(chunk))
     child.stderr!.setEncoding('utf8').on('data', (chunk: string) => this.receive(chunk))
@@ -413,6 +482,7 @@ export class Emulator {
         void this.capture?.stop() // ffmpeg finishes the file from what arrived
         this.addLine(message)
         this.setDecklink({ active: null, source: 'color-edit' })
+        this.setNdiState(ndiIdle())
         this.send('emulator:state', false)
         resolve()
       }
@@ -425,6 +495,7 @@ export class Emulator {
     this.send('emulator:state', true)
     void this.refreshDecklinks()
     if (cfg.decklink) this.setDecklinkDevice(cfg)
+    if (cfg.ndi) this.setNdi(cfg)
     if (cfg.videoInput) await this.setVideoInput(cfg).catch((err: Error) => this.addLine(`No video input: ${err.message}`))
   }
 
@@ -509,6 +580,20 @@ export class Emulator {
   }
 }
 
+/**
+ * GPI closures from other programs on this computer, such as the BVE-9100 emulator, as UDP datagrams to
+ * 127.0.0.1. Only this computer can reach it. It listens while the app is open, so either can start first.
+ */
+function listenForGpi(emulator: Emulator): void {
+  const socket = createSocket('udp4')
+  socket.on('message', (data, from) => emulator.gpiMessage(data.toString('utf8'), `${from.address}:${from.port}`))
+  socket.on('error', (err) => {
+    emulator.note(`GPI: can't listen on UDP port ${GPI_UDP_PORT}: ${err.message}`)
+    socket.close()
+  })
+  socket.bind(GPI_UDP_PORT, '127.0.0.1')
+}
+
 export function registerEmulator(win: BrowserWindow): Emulator {
   const emulator = new Emulator(win)
 
@@ -520,6 +605,9 @@ export function registerEmulator(win: BrowserWindow): Emulator {
   ipcMain.handle('emulator:video-input', (_, cfg: EmulatorConfig) => emulator.setVideoInput(cfg))
   ipcMain.handle('emulator:decklink', (_, cfg: EmulatorConfig) => emulator.setDecklinkDevice(cfg))
   ipcMain.handle('emulator:decklink-refresh', () => emulator.refreshDecklinks())
+  ipcMain.handle('emulator:ndi', (_, cfg: EmulatorConfig) => emulator.setNdi(cfg))
+  ipcMain.handle('emulator:gpi', (_, input: number) => emulator.gpi(input))
+  listenForGpi(emulator)
   ipcMain.handle('emulator:network', (_, up: boolean) => emulator.setNetwork(up))
   ipcMain.handle('emulator:nvram-read', (_, cfg: EmulatorConfig) => emulator.readNvram(cfg))
   ipcMain.handle('emulator:nvram-write', (_, cfg: EmulatorConfig, data: Uint8Array) => emulator.writeNvram(cfg, data))

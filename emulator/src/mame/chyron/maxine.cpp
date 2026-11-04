@@ -69,6 +69,7 @@
 #if !defined(__EMSCRIPTEN__)
 #include "decklinkout.h"
 #include "fieldcapture.h"
+#include "ndiout.h"
 #endif
 #include "maxine_keys.h"
 #include "mcchip.h"
@@ -139,6 +140,9 @@ static constexpr unsigned long ASFW_ANY = 0xffffffff;
 static constexpr unsigned RASTER_LINE_CLOCKS = 858; // at 13.5 MHz
 static constexpr unsigned FIRST_ACTIVE_LINE = 21;
 
+// A pulsed GPI stays closed this long, past the firmware's 10-tick debounce
+static constexpr int GPI_PULSE_FIELDS = 15;
+
 // The web build has no threads, sockets or stdin, so it has no capture and no command reader
 #if !defined(__EMSCRIPTEN__)
 
@@ -156,8 +160,34 @@ static std::optional<std::string> s_decklink_name;
 static std::string s_decklink_playing; // so a hard reset, which makes a new driver, opens it again
 static std::atomic<bool> s_decklink_list{false};
 
+// The NDI sources are this with " Fill" and " Matte"
+static char const NDI_NAME[] = "MAXINE!";
+
+// Whether to send NDI, until the machine takes it, and whether it was, so a hard reset opens it again
+static std::mutex s_ndi_lock;
+static std::optional<bool> s_ndi_wanted;
+static bool s_ndi_sending = false;
+
+// GPI inputs to change, until the machine takes them: input 0-7, and GPI_ON, GPI_OFF or GPI_PULSE
+enum gpi_change { GPI_OFF, GPI_ON, GPI_PULSE };
+static std::mutex s_gpi_lock;
+static std::vector<std::pair<int, gpi_change>> s_gpi_changes;
+
+// "gpi <1-8> on", "gpi <1-8> off" or "gpi <1-8>" for a closure long enough for the firmware's debounce
+static void gpi_command(std::string const &args)
+{
+	int const input = std::atoi(args.c_str()) - 1;
+	if (input < 0 || input > 7)
+		return;
+	std::string const state = args.substr(std::min(args.find(' '), args.size()));
+	gpi_change const change = state == " on" ? GPI_ON : state == " off" ? GPI_OFF : GPI_PULSE;
+	std::lock_guard const lock(s_gpi_lock);
+	s_gpi_changes.emplace_back(input, change);
+}
+
 // MAXINE! Studio's commands, a line at a time: "capture <port>", "capture stop", "videoin <PNG path>",
-// "videoin off", "decklink list", "decklink <display name>" and "decklink off". The low-level read
+// "videoin off", "decklink list", "decklink <display name>", "decklink off", "ndi on", "ndi off" and the
+// GPI commands above. The low-level read
 // matters: getchar() would hold a stream lock that exit() needs. Node can only terminate a process on
 // Windows, which loses the NVRAM, so the app closes stdin there to quit. Elsewhere it sends SIGTERM, and
 // closing means the app has gone, which shouldn't lose the machine.
@@ -192,6 +222,13 @@ static void read_commands()
 			std::lock_guard const lock(s_decklink_lock);
 			s_decklink_name = (line == "decklink off") ? std::string() : line.substr(9);
 		}
+		else if (line == "ndi on" || line == "ndi off")
+		{
+			std::lock_guard const lock(s_ndi_lock);
+			s_ndi_wanted = line == "ndi on";
+		}
+		else if (line.rfind("gpi ", 0) == 0)
+			gpi_command(line.substr(4));
 		line.clear();
 	}
 #if defined(_WIN32)
@@ -424,7 +461,10 @@ private:
 	void open_decklink(std::string const &name);
 	void list_decklinks();
 	void decklink_field();
+	void open_ndi(bool on);
+	void ndi_field();
 #endif
+	void gpi_w(int input, bool closed);
 	void overlay_row(int y, uint32_t *dest, int min_x, int max_x) const;
 	void tablet_frame(int x, int y, int buttons);
 	void update_tablet();
@@ -561,7 +601,13 @@ private:
 	int m_decklink_source = SHOW_COLOR_EDIT; // what the frame being filled shows
 	std::unique_ptr<uint32_t[]> m_decklink_rows; // a frame of $KKRRGGBB to convert from
 	int m_second_screen_told = -1; // the app has heard about this one
+	std::unique_ptr<ndi_output> m_ndi;
+	std::unique_ptr<uint32_t[]> m_ndi_rows; // a frame of $KKRRGGBB
+	bool m_ndi_frame = false; // its first field is in
+	unsigned m_ndi_frames = 0;
+	int m_ndi_receivers[2] = { -1, -1 }; // the fill's and the matte's, as last told
 #endif
+	int m_gpi_release[8]{}; // fields until a pulsed GPI opens again
 	uint32_t m_panel_last[3]{};
 	bitmap_rgb32 m_video_input; // what the Video Input board sees
 	int m_repeat_key = -1; // index into PANEL_KEYS
@@ -803,6 +849,26 @@ void maxine_state::poll_host()
 	}
 	if (decklink)
 		open_decklink(*decklink);
+
+	std::optional<bool> ndi;
+	{
+		std::lock_guard const lock(s_ndi_lock);
+		ndi.swap(s_ndi_wanted);
+	}
+	if (ndi)
+		open_ndi(*ndi);
+
+	std::vector<std::pair<int, gpi_change>> gpi;
+	{
+		std::lock_guard const lock(s_gpi_lock);
+		gpi.swap(s_gpi_changes);
+	}
+	for (auto const &[input, change] : gpi)
+	{
+		gpi_w(input, change != GPI_OFF);
+		m_gpi_release[input] = change == GPI_PULSE ? GPI_PULSE_FIELDS : 0;
+		logerror("GPI %d %s\n", input + 1, change == GPI_PULSE ? "pulsed" : change == GPI_ON ? "closed" : "opened");
+	}
 #else
 	if (s_page_video_input)
 	{
@@ -907,6 +973,7 @@ void maxine_state::end_capture()
 TIMER_CALLBACK_MEMBER(maxine_state::capture_field)
 {
 	decklink_field();
+	ndi_field();
 
 	if (!m_capture)
 		return;
@@ -1004,7 +1071,80 @@ void maxine_state::decklink_field()
 	}
 }
 
+void maxine_state::open_ndi(bool on)
+{
+	m_ndi.reset();
+	s_ndi_sending = false;
+	if (!on)
+	{
+		logerror("MAXINE_NDI_OFF\n");
+		return;
+	}
+
+	auto output = std::make_unique<ndi_output>(NDI_NAME);
+	if (!output->error().empty())
+	{
+		logerror("MAXINE_NDI_ERROR %s\n", output->error());
+		return;
+	}
+	if (!m_ndi_rows)
+		m_ndi_rows = std::make_unique<uint32_t[]>(ndi_output::WIDTH * ndi_output::HEIGHT);
+	m_ndi = std::move(output);
+	m_ndi_frame = false;
+	m_ndi_receivers[0] = m_ndi_receivers[1] = -1;
+	s_ndi_sending = true;
+	logerror("MAXINE_NDI_ON %s Fill, %s Matte\n", NDI_NAME, NDI_NAME);
+}
+
+// Video and Key, a whole frame at a time, with fields taken as the capture's are
+void maxine_state::ndi_field()
+{
+	if (!m_ndi)
+		return;
+	if (m_lower_field)
+		m_ndi_frame = true;
+	if (!m_ndi_frame)
+		return;
+
+	m_fb->render_field(m_ndi_rows.get(), m_lower_field ? 1 : 0, ndi_output::WIDTH, ndi_output::HEIGHT);
+	if (m_lower_field)
+		return;
+	m_ndi->send(m_ndi_rows.get());
+	m_ndi_frame = false;
+
+	// About once a second, the app hears how many receivers there are when that changes
+	if (++m_ndi_frames % 30 == 0)
+	{
+		int const fill = m_ndi->fill_receivers(), matte = m_ndi->matte_receivers();
+		if (fill != m_ndi_receivers[0] || matte != m_ndi_receivers[1])
+		{
+			m_ndi_receivers[0] = fill;
+			m_ndi_receivers[1] = matte;
+			logerror("MAXINE_NDI_RECEIVERS %d %d\n", fill, matte);
+		}
+	}
+}
+
 #endif // !__EMSCRIPTEN__
+
+// The GPI inputs are the MFP's eight general-purpose pins, pulled up, so a closure takes one low. The
+// firmware interrupts on that edge, waits 10 ticks, and if the pin is still low queues key $d0-$d4 or
+// $e0-$e2, which programs take as F1-F8 in Single User GPI mode. See docs/hardware-map.md.
+void maxine_state::gpi_w(int input, bool closed)
+{
+	int const level = closed ? 0 : 1;
+	switch (input)
+	{
+	case 0: m_mfp->i0_w(level); break;
+	case 1: m_mfp->i1_w(level); break;
+	case 2: m_mfp->i2_w(level); break;
+	case 3: m_mfp->i3_w(level); break;
+	case 4: m_mfp->i4_w(level); break;
+	case 5: m_mfp->i5_w(level); break;
+	case 6: m_mfp->i6_w(level); break;
+	case 7: m_mfp->i7_w(level); break;
+	}
+}
 
 // The field interrupt also tells the firmware the video standard: it counts these for a
 // while, and fewer than 58 a second means 625 lines. Video board timing isn't modelled.
@@ -1020,8 +1160,12 @@ TIMER_CALLBACK_MEMBER(maxine_state::field_tick)
 	// Parity is ours, because nothing the firmware does here tells the fields apart. Picture starts
 	// some lines after this interrupt, by when the firmware's handler has run.
 	m_lower_field = !m_lower_field;
+
+	for (int input = 0; input < 8; input++)
+		if (m_gpi_release[input] && !--m_gpi_release[input])
+			gpi_w(input, false);
 #if !defined(__EMSCRIPTEN__)
-	if (m_capture || m_decklink)
+	if (m_capture || m_decklink || m_ndi)
 		m_capture_timer->adjust(attotime::from_ticks(FIRST_ACTIVE_LINE * RASTER_LINE_CLOCKS, 13'500'000));
 #endif
 
@@ -1997,6 +2141,12 @@ void maxine_state::machine_start()
 			if (!s_decklink_name)
 				s_decklink_name = s_decklink_playing;
 		}
+		if (s_ndi_sending)
+		{
+			std::lock_guard const lock(s_ndi_lock);
+			if (!s_ndi_wanted)
+				s_ndi_wanted = true;
+		}
 #endif
 		// field_tick stops while the machine is paused, and this doesn't
 		machine().add_notifier(MACHINE_NOTIFY_FRAME, machine_notify_delegate(&maxine_state::poll_host, this));
@@ -2036,6 +2186,13 @@ void maxine_state::machine_reset()
 		if ((device.description == "feth0" || device.description == "TUN/TAP Device") && m_lan->get_interface() != device.id)
 			m_lan->set_interface(device.id);
 #endif
+
+	// Every GPI input starts open. MAME's MFP starts its pins low, which this firmware would take as closed.
+	for (int input = 0; input < 8; input++)
+	{
+		gpi_w(input, false);
+		m_gpi_release[input] = 0;
+	}
 
 	boot_stub();
 }

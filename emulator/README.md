@@ -12,6 +12,8 @@ right, and a clickable panel of MAXINE! keys is below them.
 - Exports Fill and Key as PNGs.
 - Captures Fill and Key live as 59.94i ProRes files.
 - Plays Color Edit, Fill or Key out of a Blackmagic DeckLink as NTSC.
+- Sends Fill and Matte as two NDI sources, for OBS or a vision mixer.
+- Takes GPI triggers from other programs, such as the BVE-9100 emulator.
 - Feeds a picture to the Video Input board.
 - Emulates a mouse and a WACOM SD510C tablet.
 - Includes 64 MB of expansion RAM.
@@ -198,6 +200,48 @@ The driver takes `decklink list`, `decklink <device name>` and `decklink off` on
 With `MAXINE_DECKLINK_LIST` set, the binary prints the device list and exits before MAME starts, which is how the app
 lists devices while the emulator is stopped.
 
+### NDI output
+
+The NDI output section of the Emulator tab sends the machine as two NDI sources: **MAXINE! Fill** is the Video output
+and **MAXINE! Matte** is the Key, white where the graphics are, so a keyer downstream gets the pair a real MAXINE
+gives it. Both are 720×486 at 29.97 frames a second, interlaced, with fields sampled like the capture's. The fill is
+shaped by the key, as the real Video output is.
+
+- Install the NDI runtime. NDI Tools includes it on Windows and macOS. On Linux, copy `libndi.so.6` from the NDI SDK
+  for Linux to `/usr/local/lib` and run `sudo ldconfig`. The app doesn't include NDI. A runtime somewhere else is
+  found through `NDI_RUNTIME_DIR_V6`.
+- Pick Fill and Matte in the tab, whether or not the emulator is running. It's remembered, and the sources appear
+  whenever the emulator runs. The tab shows how many receivers each source has.
+- In OBS, add both with the DistroAV plugin. To key the fill over other sources, use the matte as its mask, for
+  example with a luma-matte or mask filter plugin.
+
+The emulator's own clock paces the frames, not NDI's. The driver takes `ndi on` and `ndi off` on stdin and answers with
+`MAXINE_NDI_ON`, `MAXINE_NDI_OFF` or `MAXINE_NDI_ERROR` lines, then `MAXINE_NDI_RECEIVERS <fill> <matte>` when the
+counts change.
+
+NDI® is a registered trademark of Vizrt NDI AB.
+
+### GPI
+
+The GPI in section of the Emulator tab closes one of the machine's eight GPI inputs, as a contact closure on the
+rear panel would. The firmware turns GPI 1 to 8 into F1 to F8, so GPI 4 does what F4 does in the program that's
+running.
+
+Other programs on the same computer trigger them with a UDP datagram to `127.0.0.1:49100`, one command a line:
+
+| Command | Effect |
+|---|---|
+| `gpi 4` | Closes GPI 4 for a quarter of a second, long enough for the firmware's debounce |
+| `gpi 4 on` | Holds GPI 4 closed |
+| `gpi 4 off` | Opens it again |
+
+```sh
+printf 'gpi 4' | nc -u -w0 127.0.0.1 49100
+```
+
+The app listens while it's open, so the sender can start first. Without the app, the same commands work on the
+emulator's stdin. As on a real unit, the firmware ignores a closure that has opened again by the time its debounce checks, 10 ticks later.
+
 ### Video input
 
 The emulated MAXINE has a Video Input board, and a picture you choose is what it sees. In the app, use Browse in the
@@ -253,6 +297,8 @@ for CNTL with those letters. Paste with Command-V, or Ctrl+Shift+V on Windows an
 - A capture's field order and 10:11 tag follow the NTSC standard. They haven't been measured on a real unit.
 - DeckLink output has been tested with the `dump` device on Linux and under Wine without a driver. A real DeckLink was
   found on Windows, but playout hasn't been checked on any system yet, and the Mac build hasn't been compiled.
+- NDI output has only been tested against a stand-in library with the same entry points, not the real NDI
+  runtime or OBS.
 - The video input ignores the Gain, Black, Delay and Field settings, and Cap Mode hasn't been tried.
 - The clock and date can read wrongly.
 - Fn+Delete also switches to MAME's controls, and pressing it again switches back. In that mode Esc can quit.

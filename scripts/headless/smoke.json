@@ -43,6 +43,18 @@
       "Font code",
       "9200"
     ],
+    "eval": "[...document.querySelectorAll('label')].find((l) => l.textContent.trim().startsWith('Master id')).querySelector('input').value",
+    "expect": "9200"
+  },
+  {
+    "fill": [
+      "Master id",
+      "9000"
+    ],
+    "eval": "[...document.querySelectorAll('label')].find((l) => l.textContent.trim().startsWith('Master id')).querySelector('input').value",
+    "expect": "9000"
+  },
+  {
     "click": "Convert to .9200",
     "wait": 4000,
     "eval": "document.querySelector('[class*=\"statValue\"]').textContent",
@@ -54,13 +66,25 @@
     "expect": true
   },
   {
-    "select": [
-      "Style",
-      "shadow"
-    ],
     "fill": [
       "Font code",
       "9201"
+    ],
+    "eval": "[...document.querySelectorAll('label')].find((l) => l.textContent.trim().startsWith('Master id')).querySelector('input').value",
+    "expect": "9201"
+  },
+  {
+    "fill": [
+      "Master id",
+      "9000"
+    ],
+    "eval": "[...document.querySelectorAll('label')].find((l) => l.textContent.trim().startsWith('Master id')).querySelector('input').value",
+    "expect": "9000"
+  },
+  {
+    "select": [
+      "Style",
+      "shadow"
     ]
   },
   {
@@ -71,13 +95,25 @@
     "shot": "convert-shadow"
   },
   {
-    "select": [
-      "Style",
-      "none"
-    ],
     "fill": [
       "Font code",
       "9210"
+    ],
+    "eval": "[...document.querySelectorAll('label')].find((l) => l.textContent.trim().startsWith('Master id')).querySelector('input').value",
+    "expect": "9210"
+  },
+  {
+    "fill": [
+      "Master id",
+      "9000"
+    ],
+    "eval": "[...document.querySelectorAll('label')].find((l) => l.textContent.trim().startsWith('Master id')).querySelector('input').value",
+    "expect": "9000"
+  },
+  {
+    "select": [
+      "Style",
+      "none"
     ]
   },
   {
@@ -97,7 +133,7 @@
       "Size step",
       "6"
     ],
-    "eval": "[...document.querySelectorAll('[class*=\"convertBar\"] [class*=\"hint\"]')].map((e) => e.textContent).join(' ').includes('.9210–.9212: 40, 46, 52 scanlines')",
+    "eval": "[...document.querySelectorAll('[class*=\"convertBar\"] [class*=\"hint\"]')].map((e) => e.textContent).join(' ').includes('.9210\u2013.9212: 40, 46, 52 scanlines')",
     "expect": true
   },
   {
@@ -133,7 +169,7 @@
     "eval": "[document.querySelectorAll('[class*=\"groupRow\"]').length, document.querySelector('[class*=\"groupRow\"]').innerText.replace(/\\s+/g, ' ').replace(/ [\\d.]+ KB$/, '')]",
     "expect": [
       1,
-      "9000 Arial Bold 5 variants · 40–52 scanlines Master"
+      "9000 Arial Bold 5 variants \u00b7 40\u201352 scanlines Master"
     ],
     "shot": "upload-disconnected"
   },

@@ -266,7 +266,7 @@ export default function ConvertTab(props: Props): JSX.Element {
           )}
           <label className={ui.field} title="The file is named after this code, and it's stamped into the header">
             Font code
-            <input className={ui.mono} type="text" maxLength={4} value={settings.code} onChange={(e) => set('code', e.target.value)} />
+            <input className={ui.mono} type="text" maxLength={4} value={settings.code} onChange={(e) => onSettings({ ...settings, code: e.target.value, masterId: e.target.value })} />
           </label>
           <label className={ui.field} title="Nominal height in rows">
             Scanlines
@@ -329,7 +329,7 @@ export default function ConvertTab(props: Props): JSX.Element {
             Advance scale
             <input type="number" step={0.01} value={settings.spacing} onChange={(e) => set('spacing', Number(e.target.value))} />
           </label>
-          <label className={ui.field} title="4-digit master font id written to the header">
+          <label className={ui.field} title="4-digit master font id written to the header. Typing a font code sets it to that code; change it here afterwards if you need another.">
             Master id
             <input className={ui.mono} type="text" maxLength={4} value={settings.masterId} onChange={(e) => set('masterId', e.target.value)} />
           </label>
@@ -359,9 +359,6 @@ export default function ConvertTab(props: Props): JSX.Element {
             </div>
           )}
           {!codeValid && <div className={`${ui.hint} ${ui.hintWarn}`}>The font code must be exactly 4 digits.</div>}
-          {codeValid && !settings.code.startsWith('9') && (
-            <div className={`${ui.hint} ${ui.hintWarn}`}>Real fonts use codes below 9000. Stick to 9xxx so nothing collides on the unit.</div>
-          )}
           {codeValid && !batchValid && (
             <div className={`${ui.hint} ${ui.hintWarn}`}>
               A batch needs a step of at least 1, up to {MAX_EACH_SIDE} sizes above and below, {MIN_SCANLINES} to {MAX_SCANLINES} scanlines, and codes up

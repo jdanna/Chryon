@@ -1,3 +1,10 @@
+## 1.7.1
+- In MAXINE! Studio, typing a font code sets the master id to match, which you can still change afterwards
+- Removed the warning about font codes below 9000
+- The desktop app sends Video and Key as two NDI sources, MAXINE! Fill and MAXINE! Matte. The browser version doesn't have this.
+- The desktop app triggers the MAXINE!'s eight GPI inputs from a button or over UDP, and each one presses F1–F8 as on a real unit
+- The web page links the BVE-9100 emulator from its top bar
+
 ## 1.7.0
 - The desktop app plays Color Edit, Video or Key out of a Blackmagic DeckLink as NTSC, following SECOND SCREEN. The browser version doesn't have this.
 

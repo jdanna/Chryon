@@ -308,8 +308,10 @@ npm run dist:mac | dist:win | dist:linux | release     # unsigned installers
 - UI type follows Luminary: same stack and sizes at 100%, uppercase only on section
   titles, sentence-case labels, values in mono. `--font-scale` in `tokens.css` sets the
   overall size (1.2 here) and also drives field columns and row heights.
+- Typing a font code on the Convert tab sets the master id to the same code (1.7.1); the
+  field can still be changed afterwards. `ttf2maxine.py` on its own still defaults to `9000`.
 - The Upload tab groups converted fonts by master id and display name (`groupFonts`), not
-  id alone, because fonts left on the default `9000` would otherwise all land in one group.
+  id alone, because fonts that share a master id would otherwise all land in one group.
 - The unit runs a pSOS FTP server (`215 UNIX Type: Chyron: pSOS`) that takes any login,
   so the app has no credential fields. `SIZE`, `MDTM`, `FEAT` and `STAT` are rejected.
   **Passive mode isn't available**: `PASV` gets 502 and the user confirmed the unit

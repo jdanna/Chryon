@@ -48,7 +48,7 @@ export default function Landing({ busy, status, saved, onStart, onReset }: Props
         <h1 className={styles.title}>
           <span className={styles.gradient}>MAXINE! Emulator</span>
         </h1>
-        <p className={styles.sub}>The Chyron MAXINE! broadcast character generator, emulated in full and running in your browser.</p>
+        <p className={styles.sub}>The Chyron MAXINE! emulated in full and running in your browser.</p>
 
         <button className={styles.start} disabled={busy} onClick={onStart}>
           {busy ? 'Starting…' : saved ? 'Continue' : 'Start emulator'}

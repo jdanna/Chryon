@@ -1,3 +1,4 @@
+import bveIcon from './assets/bve-icon.svg'
 import icon from './assets/icon.png'
 import { changelog } from './changelog'
 import logo from './assets/retrograde-logo-only.png'
@@ -33,9 +34,10 @@ export default function Landing({ busy, status, saved, onStart, onReset }: Props
         </a>
         <span className={styles.navLinks}>
           <a className={styles.navLink} href={BVE}>
+            <img className={styles.navIcon} src={bveIcon} alt="" />
             BVE-9100 Emulator
           </a>
-          <a className={styles.navLink} href={HOME}>
+          <a className={`${styles.navLink} ${styles.homeLink}`} href={HOME}>
             retrograde.tools
           </a>
         </span>

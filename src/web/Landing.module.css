@@ -84,10 +84,19 @@
 }
 
 .navLink {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 14px;
+  white-space: nowrap;
   color: var(--muted);
   text-decoration: none;
   transition: color 0.2s;
+}
+
+.navIcon {
+  width: 20px;
+  height: 20px;
 }
 
 .navLink:hover {
@@ -346,5 +355,12 @@
 
   .footerLinks {
     justify-content: center;
+  }
+}
+
+/* The logo links there too, and the two links don't fit beside it on a narrow phone */
+@media (max-width: 420px) {
+  .homeLink {
+    display: none;
   }
 }

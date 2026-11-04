@@ -5,6 +5,7 @@ import wordmark from './assets/wordmark.png'
 import styles from './Landing.module.css'
 
 const HOME = 'https://retrograde.tools'
+const BVE = 'https://bve.retrograde.tools'
 const REPOSITORY = 'https://github.com/jdanna/MaxineStudio'
 const RELEASES = `${REPOSITORY}/releases/latest`
 
@@ -30,9 +31,14 @@ export default function Landing({ busy, status, saved, onStart, onReset }: Props
           <img className={styles.logo} src={logo} alt="Retrograde Labs" />
           <img className={styles.wordmark} src={wordmark} alt="" />
         </a>
-        <a className={styles.navLink} href={HOME}>
-          retrograde.tools
-        </a>
+        <span className={styles.navLinks}>
+          <a className={styles.navLink} href={BVE}>
+            BVE-9100 Emulator
+          </a>
+          <a className={styles.navLink} href={HOME}>
+            retrograde.tools
+          </a>
+        </span>
       </nav>
 
       <main className={styles.hero}>

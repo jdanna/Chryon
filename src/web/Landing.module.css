@@ -78,6 +78,11 @@
   width: auto;
 }
 
+.navLinks {
+  display: flex;
+  gap: 28px;
+}
+
 .navLink {
   font-size: 14px;
   color: var(--muted);
@@ -319,6 +324,10 @@
 
   .nav {
     padding: 0 16px;
+  }
+
+  .navLinks {
+    gap: 20px;
   }
 
   .wordmark {

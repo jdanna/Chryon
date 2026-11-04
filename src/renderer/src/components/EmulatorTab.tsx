@@ -312,50 +312,6 @@ export default function EmulatorTab({ settings, onSettings, log: appLog, setStat
               </button>
             </div>
           </div>
-
-          <div className={ui.sectionHeader}>
-            Capture
-            <span className={ui.sectionMeta}>{capture.active ? 'recording' : 'stopped'}</span>
-          </div>
-          <div className={styles.block}>
-            {capture.active ? (
-              <button className={`${ui.btn} ${styles.wide}`} disabled={captureBusy} onClick={stopCapture}>
-                {captureBusy ? 'Finishing…' : 'Stop capture'}
-              </button>
-            ) : (
-              <button className={`${ui.btn} ${styles.wide}`} disabled={captureBusy || !running || !!status?.captureMissing} onClick={startCapture}>
-                Start capture
-              </button>
-            )}
-            {capture.active && (
-              <span className={`${ui.mono} ${styles.pathValue}`}>
-                {elapsed(capture.seconds)}, {megabytes(capture.bytes)}
-              </span>
-            )}
-            {capture.behind && (
-              <div className={`${styles.note} ${ui.hintWarn}`}>The emulator is behind real time. Every field is still being saved.</div>
-            )}
-            {status?.captureMissing && <div className={`${styles.note} ${ui.hintWarn}`}>{status.captureMissing}</div>}
-            <div className={styles.path}>
-              <span className={styles.pathLabel}>Capture folder</span>
-              <span className={`${ui.mono} ${styles.pathValue}`} title={status?.captureFolder}>
-                {status?.captureFolder}
-              </span>
-              <div className={styles.buttons}>
-                <button className={ui.btnSmall} disabled={capture.active} onClick={pickCaptureFolder}>
-                  Browse…
-                </button>
-                {settings.captureFolder && (
-                  <button className={ui.btnSmall} disabled={capture.active} onClick={() => onSettings({ ...settings, captureFolder: '' })}>
-                    Use default
-                  </button>
-                )}
-                <button className={ui.btnSmall} onClick={() => api.openCaptureFolder(settings)}>
-                  Open
-                </button>
-              </div>
-            </div>
-          </div>
         </section>
 
         <section className={styles.column}>
@@ -405,6 +361,50 @@ export default function EmulatorTab({ settings, onSettings, log: appLog, setStat
               <div className={styles.buttons}>
                 <button className={ui.btnSmall} disabled={running || !hasDisk} onClick={resetDisk}>
                   Reset…
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className={ui.sectionHeader}>
+            Capture
+            <span className={ui.sectionMeta}>{capture.active ? 'recording' : 'stopped'}</span>
+          </div>
+          <div className={styles.block}>
+            {capture.active ? (
+              <button className={`${ui.btn} ${styles.wide}`} disabled={captureBusy} onClick={stopCapture}>
+                {captureBusy ? 'Finishing…' : 'Stop capture'}
+              </button>
+            ) : (
+              <button className={`${ui.btn} ${styles.wide}`} disabled={captureBusy || !running || !!status?.captureMissing} onClick={startCapture}>
+                Start capture
+              </button>
+            )}
+            {capture.active && (
+              <span className={`${ui.mono} ${styles.pathValue}`}>
+                {elapsed(capture.seconds)}, {megabytes(capture.bytes)}
+              </span>
+            )}
+            {capture.behind && (
+              <div className={`${styles.note} ${ui.hintWarn}`}>The emulator is behind real time. Every field is still being saved.</div>
+            )}
+            {status?.captureMissing && <div className={`${styles.note} ${ui.hintWarn}`}>{status.captureMissing}</div>}
+            <div className={styles.path}>
+              <span className={styles.pathLabel}>Capture folder</span>
+              <span className={`${ui.mono} ${styles.pathValue}`} title={status?.captureFolder}>
+                {status?.captureFolder}
+              </span>
+              <div className={styles.buttons}>
+                <button className={ui.btnSmall} disabled={capture.active} onClick={pickCaptureFolder}>
+                  Browse…
+                </button>
+                {settings.captureFolder && (
+                  <button className={ui.btnSmall} disabled={capture.active} onClick={() => onSettings({ ...settings, captureFolder: '' })}>
+                    Use default
+                  </button>
+                )}
+                <button className={ui.btnSmall} onClick={() => api.openCaptureFolder(settings)}>
+                  Open
                 </button>
               </div>
             </div>

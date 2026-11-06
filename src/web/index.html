@@ -5,7 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>MAXINE! Emulator — Retrograde Labs</title>
     <meta name="description" content="The Chyron MAXINE! emulated in full and running in your browser." />
-    <link rel="icon" type="image/png" href="./assets/icon.png" />
+    <!-- Unfurlers (Slack and the like) take the 32 px PNG, the Apple icon or /favicon.ico (src/web/public),
+         all from scripts/make-icon.py --web -->
+    <link rel="icon" type="image/png" sizes="256x256" href="./assets/icon.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="./assets/icon-32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="./assets/apple-touch-icon.png" />
   </head>
   <body>
     <div id="root"></div>

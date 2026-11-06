@@ -3,7 +3,8 @@
 Draws the app icon, the red "!" from the MAXINE! badge on Luminary's dark gradient
 tile, and writes resources/icon.png, icon.ico and icon.icns. Only needs rerunning
 if the design changes; icon.icns needs macOS's iconutil. With --web it writes only the
-web page's version instead, in Retrograde's teal and blue.
+web page's versions instead, in Retrograde's teal and blue: the 256 px page icon, plus the
+PNGs and favicon.ico that link unfurlers (Slack and the like) look for.
 
     python3 scripts/make-icon.py [--web]
 """
@@ -74,8 +75,15 @@ def draw_icon(first, last, glow):
 
 def main():
     if "--web" in sys.argv:
-        out = draw_icon(*WEB).resize((WEB_SIZE, WEB_SIZE), Image.LANCZOS)
-        out.save(os.path.join(ROOT, "src", "web", "assets", "icon.png"))
+        full = draw_icon(*WEB)
+        web = os.path.join(ROOT, "src", "web")
+        full.resize((WEB_SIZE, WEB_SIZE), Image.LANCZOS).save(os.path.join(web, "assets", "icon.png"))
+        full.resize((32, 32), Image.LANCZOS).save(os.path.join(web, "assets", "icon-32.png"))
+        # Apple's icon is opaque and square, because iOS rounds the corners itself
+        full.convert("RGB").resize((180, 180), Image.LANCZOS).save(os.path.join(web, "assets", "apple-touch-icon.png"))
+        # public/ is copied to the site's root unhashed, where unfurlers ask for /favicon.ico
+        os.makedirs(os.path.join(web, "public"), exist_ok=True)
+        full.save(os.path.join(web, "public", "favicon.ico"), sizes=[(16, 16), (32, 32), (48, 48)])
         return
 
     out = draw_icon(*DESKTOP)

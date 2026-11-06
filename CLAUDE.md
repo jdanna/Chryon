@@ -382,7 +382,7 @@ npm run dist:mac | dist:win | dist:linux | release     # unsigned installers
   to `run()`. Driver code that needs threads, sockets or stdin goes behind `__EMSCRIPTEN__`, as capture does.
 - The web disk is a writable copy in Emscripten's MEMFS, saved whole to IndexedDB. Don't go back to a read-only disk with a MAME
   diff: an uncompressed CHD counts as writeable however it's opened, and with `harddriv.cpp` patched to force a diff, the second
-  boot threw a C++ exception. `src/web` has its own startup page, styled after retrograde.tools, and a small top bar. Its teal icon comes from `make-icon.py --web`, which also writes the 32 px and Apple PNGs and `public/favicon.ico` that link unfurls (Slack and the like) use, and the desktop icon stays red. It doesn't use the Emulator tab or `window.maxine`.
+  boot threw a C++ exception. `src/web` has its own startup page, styled after retrograde.tools, and a small top bar. Its teal icon comes from `make-icon.py --web`, which also writes the 32 px and Apple PNGs and `public/favicon.ico` that link unfurls (Slack and the like) use, and `public/icon-512.png`, the `og:image` thumbnail that `vite.web.config.ts` fills in as an absolute URL, and the desktop icon stays red. It doesn't use the Emulator tab or `window.maxine`.
 - Test the web page with `npm run test:web`. In headless Chrome a synthetic key can set `document.hidden`, which stops the
   frames and so the machine, and looks like a firmware hang. `web-boot.mjs` has the flags that prevent it.
 - Headless screenshots time out on Linux once the hidden window has updated. Use `xvfb-run -a node

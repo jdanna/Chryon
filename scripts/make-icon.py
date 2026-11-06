@@ -4,7 +4,7 @@ Draws the app icon, the red "!" from the MAXINE! badge on Luminary's dark gradie
 tile, and writes resources/icon.png, icon.ico and icon.icns. Only needs rerunning
 if the design changes; icon.icns needs macOS's iconutil. With --web it writes only the
 web page's versions instead, in Retrograde's teal and blue: the 256 px page icon, plus the
-PNGs and favicon.ico that link unfurlers (Slack and the like) look for.
+PNGs and favicon.ico that link unfurlers (Slack and the like) look for, and the 512 px og:image.
 
     python3 scripts/make-icon.py [--web]
 """
@@ -84,6 +84,7 @@ def main():
         # public/ is copied to the site's root unhashed, where unfurlers ask for /favicon.ico
         os.makedirs(os.path.join(web, "public"), exist_ok=True)
         full.save(os.path.join(web, "public", "favicon.ico"), sizes=[(16, 16), (32, 32), (48, 48)])
+        full.resize((512, 512), Image.LANCZOS).save(os.path.join(web, "public", "icon-512.png"))
         return
 
     out = draw_icon(*DESKTOP)

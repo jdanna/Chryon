@@ -5,8 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>MAXINE! Emulator — Retrograde Labs</title>
     <meta name="description" content="The Chyron MAXINE! emulated in full and running in your browser." />
-    <!-- Unfurlers (Slack and the like) take the 32 px PNG, the Apple icon or /favicon.ico (src/web/public),
-         all from scripts/make-icon.py --web -->
+    <meta property="og:title" content="MAXINE! Emulator" />
+    <meta property="og:description" content="The Chyron MAXINE! emulated in full and running in your browser." />
+    <meta property="og:site_name" content="Retrograde Labs" />
+    <meta property="og:image" content="%OG_IMAGE%" />
+    <meta property="og:image:width" content="512" />
+    <meta property="og:image:height" content="512" />
+    <meta name="twitter:card" content="summary" />
+    <!-- Unfurlers (Slack and the like) show og:image as the thumbnail, and beside the title the 32 px PNG, the Apple
+         icon or /favicon.ico, all from scripts/make-icon.py --web. vite.web.config.ts fills in %OG_IMAGE% -->
     <link rel="icon" type="image/png" sizes="256x256" href="./assets/icon.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="./assets/icon-32.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="./assets/apple-touch-icon.png" />
